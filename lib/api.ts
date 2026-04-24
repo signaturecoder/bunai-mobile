@@ -9,7 +9,7 @@ import type { AuthResponse, ModFile, ModFileDetail } from './types';
 
 // Your deployed Next.js app URL
 // In development, you can use your local IP or ngrok
-const API_BASE_URL = process.env.EXPO_PUBLIC_API_URL || 'https://your-app.vercel.app';
+const API_BASE_URL = process.env.EXPO_PUBLIC_API_URL || 'https://gamchadesign-git-staging-sanu-kumars-projects.vercel.app';
 
 /**
  * Base fetch wrapper with auth headers

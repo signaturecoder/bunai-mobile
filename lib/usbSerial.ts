@@ -8,6 +8,7 @@
  */
 
 import { UsbSerialManager, Parity } from 'react-native-usb-serialport-for-android';
+import type { UsbSerial } from 'react-native-usb-serialport-for-android';
 import type { WriteProgress } from './types';
 
 // Protocol constants (same as bunai-bridge)
@@ -36,13 +37,33 @@ interface UsbDevice {
   manufacturerName?: string;
 }
 
-let currentDeviceId: number | null = null;
+let currentSerial: UsbSerial | null = null;
+
+/**
+ * Convert Uint8Array to hex string (required by library send())
+ */
+function toHex(data: Uint8Array): string {
+  return Array.from(data)
+    .map(b => b.toString(16).padStart(2, '0'))
+    .join('');
+}
+
+/**
+ * Convert hex string to Uint8Array (received data is hex string)
+ */
+function fromHex(hex: string): Uint8Array {
+  const bytes = new Uint8Array(hex.length / 2);
+  for (let i = 0; i < hex.length; i += 2) {
+    bytes[i / 2] = parseInt(hex.substring(i, 2), 16);
+  }
+  return bytes;
+}
 
 /**
  * Check if USB serial is available (Android only)
  */
 export function isUsbSerialSupported(): boolean {
-  return true; // Always true on Android with the native module
+  return true;
 }
 
 /**
@@ -65,22 +86,28 @@ export async function openDevice(deviceId: number): Promise<boolean> {
   try {
     // Request permission
     const granted = await UsbSerialManager.tryRequestPermission(deviceId);
+    console.log('[usbSerial] tryRequestPermission result:', granted);
+    if (typeof window !== 'undefined' && window.alert) {
+      window.alert('USB permission dialog result: ' + granted);
+    }
     if (!granted) {
       throw new Error('USB permission denied');
     }
 
-    // Open the device
-    await UsbSerialManager.open(deviceId, {
+    // Open the device - returns UsbSerial instance
+    currentSerial = await UsbSerialManager.open(deviceId, {
       baudRate: BAUD_RATE,
       dataBits: DATA_BITS,
       stopBits: STOP_BITS,
       parity: PARITY,
     });
 
-    currentDeviceId = deviceId;
     return true;
   } catch (error) {
     console.error('Failed to open USB device:', error);
+    if (typeof window !== 'undefined' && window.alert) {
+      window.alert('Failed to open USB device: ' + error);
+    }
     throw error;
   }
 }
@@ -89,13 +116,13 @@ export async function openDevice(deviceId: number): Promise<boolean> {
  * Close the current USB serial connection
  */
 export async function closeDevice(): Promise<void> {
-  if (currentDeviceId !== null) {
+  if (currentSerial !== null) {
     try {
-      await UsbSerialManager.close(currentDeviceId);
+      await currentSerial.close();
     } catch (error) {
       console.error('Failed to close USB device:', error);
     }
-    currentDeviceId = null;
+    currentSerial = null;
   }
 }
 
@@ -103,20 +130,20 @@ export async function closeDevice(): Promise<void> {
  * Read data from USB serial with timeout
  */
 async function readWithTimeout(timeoutMs: number = RESPONSE_TIMEOUT_MS): Promise<Uint8Array> {
-  if (currentDeviceId === null) {
+  if (currentSerial === null) {
     throw new Error('No device connected');
   }
 
   return new Promise((resolve, reject) => {
     const timeout = setTimeout(() => {
+      sub.remove();
       reject(new Error('Read timeout'));
     }, timeoutMs);
 
-    // Set up listener for incoming data
-    const subscription = UsbSerialManager.addListener(currentDeviceId!, (data) => {
+    const sub = currentSerial!.onReceived((event) => {
       clearTimeout(timeout);
-      subscription.remove();
-      resolve(new Uint8Array(data));
+      sub.remove();
+      resolve(fromHex(event.data));
     });
   });
 }
@@ -125,11 +152,11 @@ async function readWithTimeout(timeoutMs: number = RESPONSE_TIMEOUT_MS): Promise
  * Write data to USB serial
  */
 async function writeData(data: Uint8Array): Promise<void> {
-  if (currentDeviceId === null) {
+  if (currentSerial === null) {
     throw new Error('No device connected');
   }
 
-  await UsbSerialManager.send(currentDeviceId, Array.from(data));
+  await currentSerial.send(toHex(data));
 }
 
 /**
@@ -161,7 +188,7 @@ export async function writeModFile(
   data: Uint8Array,
   onProgress?: (progress: WriteProgress) => void
 ): Promise<void> {
-  if (currentDeviceId === null) {
+  if (currentSerial === null) {
     throw new Error('No device connected');
   }
 
@@ -255,7 +282,7 @@ export async function writeModFile(
  * Ping device to check connection
  */
 export async function pingDevice(): Promise<boolean> {
-  if (currentDeviceId === null) {
+  if (currentSerial === null) {
     return false;
   }
 
@@ -275,12 +302,12 @@ export async function pingDevice(): Promise<boolean> {
  * Get current device ID
  */
 export function getCurrentDeviceId(): number | null {
-  return currentDeviceId;
+  return currentSerial?.deviceId ?? null;
 }
 
 /**
  * Check if a device is connected
  */
 export function isConnected(): boolean {
-  return currentDeviceId !== null;
+  return currentSerial !== null;
 }
