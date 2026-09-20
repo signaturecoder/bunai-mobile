@@ -68,6 +68,11 @@ export default function SettingsScreen() {
 
       {/* Actions */}
       <View style={styles.section}>
+        <TouchableOpacity style={styles.diagnosticsButton} onPress={() => router.push('/diagnostics')}>
+          <Ionicons name="construct" size={20} color="#111827" />
+          <Text style={styles.diagnosticsText}>Diagnostics</Text>
+        </TouchableOpacity>
+        
         <TouchableOpacity style={styles.logoutButton} onPress={handleLogout}>
           <Ionicons name="log-out-outline" size={20} color="#ef4444" />
           <Text style={styles.logoutText}>Logout</Text>

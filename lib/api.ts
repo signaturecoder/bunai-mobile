@@ -63,6 +63,23 @@ export async function login(phone: string, password: string): Promise<AuthRespon
 
   const authData: AuthResponse = await response.json();
   
+  // Validate response has required fields
+  if (!authData || typeof authData !== 'object') {
+    throw new Error('Invalid login response from server');
+  }
+
+  if (!authData.token || typeof authData.token !== 'string') {
+    throw new Error('Missing or invalid token in response');
+  }
+
+  if (!authData.user || typeof authData.user !== 'object') {
+    throw new Error('Missing or invalid user data in response');
+  }
+
+  if (!authData.expiresAt || typeof authData.expiresAt !== 'string') {
+    throw new Error('Missing or invalid expiry date in response');
+  }
+  
   // Store auth data securely
   await storeAuth(authData);
   

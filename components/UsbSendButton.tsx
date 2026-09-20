@@ -11,7 +11,7 @@ import {
   listDevices,
   openDevice,
   closeDevice,
-  writeModFile,
+  sendRawData,
   pingDevice,
   isConnected,
   getCurrentDeviceId,
@@ -46,12 +46,15 @@ export default function UsbSendButton({
   const [sending, setSending] = useState(false);
   const [progress, setProgress] = useState<WriteProgress | null>(null);
   const [scanning, setScanning] = useState(false);
+  const [baudRate, setBaudRate] = useState<number>(28800);
 
   // Scan for USB devices
   const scanDevices = async () => {
+    console.log('Scanning for USB devices...');
     setScanning(true);
     try {
       const found = await listDevices();
+      console.log('Found USB devices:', found);
       setDevices(found);
       if (found.length === 1) {
         setSelectedDevice(found[0]);
@@ -72,7 +75,7 @@ export default function UsbSendButton({
     if (!selectedDevice) return;
 
     try {
-      await openDevice(selectedDevice.deviceId);
+      await openDevice(selectedDevice.deviceId, { baudRate });
       setConnected(true);
 
       // Ping to verify device is responding
@@ -105,14 +108,12 @@ export default function UsbSendButton({
     try {
       // Connect if not already
       if (!connected && selectedDevice) {
-        await openDevice(selectedDevice.deviceId);
+        await openDevice(selectedDevice.deviceId, { baudRate });
         setConnected(true);
       }
 
-      // Write to device
-      await writeModFile(modData, (p) => {
-        setProgress(p);
-      });
+      // Send MOD file as raw bytes (no protocol)
+      await sendRawData(modData);
 
       setDeviceReady(true);
       onSuccess?.();
@@ -137,6 +138,24 @@ export default function UsbSendButton({
 
   return (
     <View style={styles.container}>
+      {/* Baud rate selector */}
+      <View style={{ flexDirection: 'row', gap: 8, marginBottom: 8 }}>
+        {[9600, 19200, 28800, 57600, 115200].map((rate) => (
+          <TouchableOpacity
+            key={rate}
+            onPress={() => setBaudRate(rate)}
+            style={{
+              paddingVertical: 6,
+              paddingHorizontal: 10,
+              borderRadius: 8,
+              backgroundColor: baudRate === rate ? '#7c3aed' : '#f3f4f6',
+            }}
+          >
+            <Text style={{ color: baudRate === rate ? '#fff' : '#374151', fontWeight: baudRate === rate ? '700' : '600' }}>{rate}</Text>
+          </TouchableOpacity>
+        ))}
+      </View>
+
       {/* Device Selection */}
       {!connected && (
         <View style={styles.deviceSection}>
