@@ -13,7 +13,7 @@ export default function Index() {
   useEffect(() => {
     if (!isLoading) {
       if (isAuthenticated) {
-        router.replace('/(app)/mods');
+        router.replace('/(app)/designs');
       } else {
         router.replace('/(auth)/login');
       }
