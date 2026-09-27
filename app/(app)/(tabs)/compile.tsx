@@ -12,7 +12,9 @@ import {
   ActivityIndicator,
 } from 'react-native';
 import { useRouter } from 'expo-router';
-import { getApiUrl, compileMod, saveModToLibrary } from '@/lib/api';
+import { getApiUrl, compileMod, saveModToLibrary, updateMod } from '@/lib/api';
+import { getEditContext, clearEditContext } from '../../../lib/cart';
+import { emitMods } from '@/lib/queue';
 import { getAuthHeader } from '@/lib/auth';
 import { emit, subscribe } from '@/lib/queue';
 
@@ -23,6 +25,7 @@ export default function CompileScreen() {
   const [modalName, setModalName] = useState('');
   const [isSaving, setIsSaving] = useState(false);
   const [modalError, setModalError] = useState<string | null>(null);
+  const [editCtx, setEditCtx] = useState<any | null>(null);
   const router = useRouter();
 
   useEffect(() => {
@@ -60,8 +63,11 @@ export default function CompileScreen() {
       const res = await compileMod(ids);
       // Store result and show modal to ask for name
       setCompiled(res);
-      const suggested = (res.filename || `compiled-${Date.now()}.MOD`).replace(/\.MOD$/i, '');
-      setModalName(suggested);
+      const suggested = (res.filename || `Temp.MOD`).replace(/\.MOD$/i, '');
+      // If edit context exists, prefill with existing mod name and mark editing
+      const edit = await getEditContext();
+      setEditCtx(edit || null);
+      setModalName((edit && edit.modName) ? edit.modName : suggested);
     } catch (err) {
       Alert.alert('Compile failed', err instanceof Error ? err.message : 'Unknown error');
     } finally {
@@ -96,13 +102,37 @@ export default function CompileScreen() {
     setModalError(null);
     setIsSaving(true);
     try {
-      await saveModToLibrary({
-        name: modalName.trim(),
-        description: null,
-        fileData: base64,
-        designIds: designIds || items.map((i) => i.id),
-        metadata: metadata || {},
-      });
+      // Check edit context: if editing an existing mod, call updateMod
+      const edit = editCtx || await getEditContext();
+      if (edit && edit.editModId) {
+        const res = await updateMod(edit.editModId, {
+          name: modalName.trim(),
+          description: null,
+          fileData: base64,
+          designIds: designIds || items.map((i) => i.id),
+          metadata: metadata || {},
+        });
+        // clear edit context after successful update
+        await clearEditContext();
+        // notify listeners and navigate to updated mod detail
+        try { emitMods(edit.editModId); } catch (_) {}
+        router.replace(`/(app)/mod/${edit.editModId}`);
+      } else {
+        const res = await saveModToLibrary({
+          name: modalName.trim(),
+          description: null,
+          fileData: base64,
+          designIds: designIds || items.map((i) => i.id),
+          metadata: metadata || {},
+        });
+        const newId = res?.modFile?.id || null;
+        if (newId) {
+          try { emitMods(newId); } catch (_) {}
+          router.replace(`/(app)/mod/${newId}`);
+        } else {
+          router.replace('/(app)/(tabs)/mods');
+        }
+      }
 
       // Clear server cart
       const authHeader = await getAuthHeader();
@@ -115,8 +145,7 @@ export default function CompileScreen() {
       emit(0);
       setCompiled(null);
       setModalName('');
-      // Navigate to Mods list
-      router.replace('/(app)/mods');
+      setEditCtx(null);
     } catch (err) {
       const e = err as any;
       // Check for duplicate filename server error
@@ -184,8 +213,8 @@ export default function CompileScreen() {
         <Modal visible={true} animationType="slide" transparent={true}>
           <View style={{ flex: 1, justifyContent: 'center', alignItems: 'center', backgroundColor: 'rgba(0,0,0,0.5)' }}>
             <View style={{ width: '90%', backgroundColor: '#fff', padding: 16, borderRadius: 8 }}>
-              <Text style={{ fontSize: 16, fontWeight: '700', marginBottom: 8 }}>Save Module</Text>
-              <Text style={{ fontSize: 13, color: '#6b7280', marginBottom: 12 }}>Enter a name for the compiled MOD file</Text>
+              <Text style={{ fontSize: 16, fontWeight: '700', marginBottom: 8 }}>{editCtx && editCtx.editModId ? 'Update Module' : 'Save Module'}</Text>
+              <Text style={{ fontSize: 13, color: '#6b7280', marginBottom: 12 }}>{editCtx && editCtx.editModId ? 'Update the name and save changes to the existing MOD file' : 'Enter a name for the compiled MOD file'}</Text>
               <TextInput value={modalName} onChangeText={(v) => { setModalName(v); setModalError(null); }} style={{ borderWidth: 1, borderColor: '#e5e7eb', padding: 10, borderRadius: 6, marginBottom: 8 }} />
               {modalError ? (
                 <Text style={{ color: '#ef4444', marginBottom: 8 }}>{modalError}</Text>
@@ -195,7 +224,7 @@ export default function CompileScreen() {
                   <Text style={{ color: '#6b7280' }}>Cancel</Text>
                 </TouchableOpacity>
                 <TouchableOpacity onPress={handleConfirmSave} style={{ paddingVertical: 10, paddingHorizontal: 12 }} disabled={isSaving}>
-                  {isSaving ? <ActivityIndicator /> : <Text style={{ color: '#111', fontWeight: '700' }}>Save</Text>}
+                  {isSaving ? <ActivityIndicator /> : <Text style={{ color: '#111', fontWeight: '700' }}>{editCtx && editCtx.editModId ? 'Update' : 'Save'}</Text>}
                 </TouchableOpacity>
               </View>
             </View>

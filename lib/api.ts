@@ -5,6 +5,7 @@
  */
 
 import { getAuthHeader, storeAuth, clearAuth } from './auth';
+import { getRefreshToken, storeAuth as storeAuthData } from './auth';
 import type { AuthResponse, ModFile, ModFileDetail } from './types';
 
 // Your deployed Next.js app URL
@@ -18,9 +19,9 @@ async function apiFetch<T>(
   endpoint: string,
   options: RequestInit = {}
 ): Promise<T> {
-  const authHeader = await getAuthHeader();
-  
-  const response = await fetch(`${API_BASE_URL}${endpoint}`, {
+  // Attempt request, and if 401 attempt refresh token flow once
+  let authHeader = await getAuthHeader();
+  let res = await fetch(`${API_BASE_URL}${endpoint}`, {
     ...options,
     headers: {
       'Content-Type': 'application/json',
@@ -29,18 +30,53 @@ async function apiFetch<T>(
     },
   });
 
-  if (!response.ok) {
-    if (response.status === 401) {
-      // Token expired or invalid, clear auth
+  if (res.status === 401) {
+    // Try refresh token
+    const refreshToken = await getRefreshToken();
+    if (refreshToken) {
+      try {
+        const r = await fetch(`${API_BASE_URL}/api/auth/refresh`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ refreshToken }),
+        });
+        if (r.ok) {
+          const json = await r.json();
+          // server returns accessToken, refreshToken, expiresAt
+          const newAuth = {
+            token: json.accessToken || json.token,
+            refreshToken: json.refreshToken || refreshToken,
+            user: json.user || undefined,
+            expiresAt: json.expiresAt,
+          };
+          await storeAuthData(newAuth as any);
+          // retry original request with new token
+          authHeader = await getAuthHeader();
+          res = await fetch(`${API_BASE_URL}${endpoint}`, {
+            ...options,
+            headers: { 'Content-Type': 'application/json', ...authHeader, ...options.headers },
+          });
+        } else {
+          // refresh failed; clear auth and throw
+          await clearAuth();
+          throw new Error('Session expired. Please login again.');
+        }
+      } catch (e) {
+        await clearAuth();
+        throw new Error('Session expired. Please login again.');
+      }
+    } else {
       await clearAuth();
       throw new Error('Session expired. Please login again.');
     }
-    
-    const error = await response.json().catch(() => ({ error: 'Request failed' }));
-    throw new Error(error.error || `HTTP ${response.status}`);
   }
 
-  return response.json();
+  if (!res.ok) {
+    const error = await res.json().catch(() => ({ error: 'Request failed' }));
+    throw new Error(error.error || `HTTP ${res.status}`);
+  }
+
+  return res.json();
 }
 
 /**
@@ -104,7 +140,9 @@ export async function fetchModFiles(search?: string): Promise<ModFile[]> {
  * Fetch a single MOD file with full data (including binary)
  */
 export async function fetchModFileDetail(id: string): Promise<ModFileDetail> {
-  const data = await apiFetch<{ modFile: ModFileDetail }>(`/api/mods/${id}`);
+  // Append a timestamp to avoid cached responses and ensure latest data
+  const ts = Date.now();
+  const data = await apiFetch<{ modFile: ModFileDetail }>(`/api/mods/${id}?_=${ts}`);
   return data.modFile;
 }
 
@@ -211,6 +249,38 @@ export async function saveModToLibrary(payload: {
     const message = parsed.message || parsed.error || `HTTP ${res.status}`;
     const error = new Error(message);
     // attach server error code if present (e.g., DUPLICATE_FILENAME)
+    (error as any).code = parsed.error || parsed.code || null;
+    throw error;
+  }
+
+  return res.json();
+}
+
+/**
+ * Update an existing MOD file via PUT /api/mods/:id
+ */
+export async function updateMod(id: string, payload: {
+  name?: string;
+  description?: string | null;
+  fileData?: string; // base64
+  designIds?: string[];
+  metadata?: any;
+}) {
+  const authHeader = await getAuthHeader();
+  const endpoint = `/api/mods/${id}`;
+  const res = await fetch(`${API_BASE_URL}${endpoint}`, {
+    method: 'PUT',
+    headers: {
+      'Content-Type': 'application/json',
+      ...authHeader,
+    },
+    body: JSON.stringify(payload),
+  });
+
+  if (!res.ok) {
+    const parsed = await res.json().catch(() => ({ error: 'Update failed' }));
+    const message = parsed.message || parsed.error || `HTTP ${res.status}`;
+    const error = new Error(message);
     (error as any).code = parsed.error || parsed.code || null;
     throw error;
   }

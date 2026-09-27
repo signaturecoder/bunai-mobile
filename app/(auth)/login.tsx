@@ -31,7 +31,7 @@ export default function LoginScreen() {
     try {
       await login(phone.trim(), password);
       await refreshUser();
-      router.replace('/(app)/mods');
+      router.replace('/(app)/(tabs)/designs');
     } catch (error) {
       Alert.alert(
         'Login Failed',

@@ -7,34 +7,51 @@ import {
   ActivityIndicator,
   Alert,
   Platform,
+  TouchableOpacity
 } from 'react-native';
-import { useLocalSearchParams, Stack } from 'expo-router';
+import { useLocalSearchParams, Stack, useRouter } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
-import { fetchModFileDetail, base64ToUint8Array } from '@/lib/api';
+import { fetchModFileDetail, base64ToUint8Array, getApiUrl } from '@/lib/api';
+import { clearCart, addToCart, setEditModId, setModName } from '@/lib/cart';
+import { subscribeMods } from '@/lib/queue';
+import { getAuthHeader } from '@/lib/auth';
 import type { ModFileDetail, WriteProgress } from '@/lib/types';
 import UsbSendButton from '@/components/UsbSendButton';
+// Delete UI removed from detail screen; deletion is handled on the Mods list only
 
 export default function ModDetailScreen() {
   const { id } = useLocalSearchParams<{ id: string }>();
+  const router = useRouter();
   const [modFile, setModFile] = useState<ModFileDetail | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
+    let mounted = true;
     const loadModFile = async () => {
       if (!id) return;
 
       try {
         const data = await fetchModFileDetail(id);
-        setModFile(data);
+        if (mounted) setModFile(data);
       } catch (err) {
-        setError(err instanceof Error ? err.message : 'Failed to load MOD file');
+        if (mounted) setError(err instanceof Error ? err.message : 'Failed to load MOD file');
       } finally {
-        setIsLoading(false);
+        if (mounted) setIsLoading(false);
       }
     };
 
     loadModFile();
+    const unsubMods = subscribeMods((modId) => {
+      if (!modId || modId === id) {
+        loadModFile();
+      }
+    });
+
+    return () => {
+      mounted = false;
+      unsubMods();
+    };
   }, [id]);
 
   if (isLoading) {
@@ -98,27 +115,6 @@ export default function ModDetailScreen() {
           )}
         </View>
 
-        {/* Meta Info */}
-        <View style={styles.section}>
-          <Text style={styles.sectionTitle}>Information</Text>
-          <View style={styles.metaItem}>
-            <Text style={styles.metaLabel}>Created</Text>
-            <Text style={styles.metaValue}>
-              {new Date(modFile.createdAt).toLocaleString()}
-            </Text>
-          </View>
-          <View style={styles.metaItem}>
-            <Text style={styles.metaLabel}>Created By</Text>
-            <Text style={styles.metaValue}>
-              {modFile.createdBy.name || modFile.createdBy.email}
-            </Text>
-          </View>
-          <View style={styles.metaItem}>
-            <Text style={styles.metaLabel}>File Size</Text>
-            <Text style={styles.metaValue}>{modData.length} bytes</Text>
-          </View>
-        </View>
-
         {/* Send Button */}
         <View style={styles.section}>
           <Text style={styles.sectionTitle}>Send to Machine</Text>
@@ -142,6 +138,34 @@ export default function ModDetailScreen() {
               </Text>
             </View>
           )}
+        </View>
+
+        {/* Actions */}
+        <View style={styles.section}>
+          <Text style={styles.sectionTitle}>Actions</Text>
+          <View style={{ marginTop: 8 }}>
+            <TouchableOpacity
+              onPress={async () => {
+                try {
+                  await clearCart();
+                  for (const d of modFile.designs) {
+                    await addToCart({ id: d.design.id, filename: d.design.filename, thumbnail: d.design.thumbnail || null });
+                  }
+                  await setEditModId(modFile.id);
+                  await setModName(modFile.name);
+                  const { ToastAndroid } = require('react-native');
+                  if (ToastAndroid && ToastAndroid.show) ToastAndroid.show('Edit context prepared. Add designs and compile.', ToastAndroid.SHORT);
+                  // navigate to designs so user can add/remove designs
+                  router.push('/(app)/(tabs)/designs');
+                } catch (err) {
+                  Alert.alert('Error', err instanceof Error ? err.message : 'Failed to prepare edit');
+                }
+              }}
+              style={{ backgroundColor: '#eef2ff', padding: 12, borderRadius: 8 }}
+            >
+              <Text style={{ color: '#4338ca', textAlign: 'center', fontWeight: '600' }}>Manage Designs</Text>
+            </TouchableOpacity>
+          </View>
         </View>
 
         <View style={styles.bottomPadding} />

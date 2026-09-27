@@ -19,6 +19,27 @@ export function emit(count: number, items?: any[]) {
   });
 }
 
+// Mods listeners: for notifying mod list/detail updates
+type ModsListener = (modId?: string) => void;
+let modsListeners: ModsListener[] = [];
+
+export function subscribeMods(listener: ModsListener) {
+  modsListeners.push(listener);
+  return () => {
+    modsListeners = modsListeners.filter((l) => l !== listener);
+  };
+}
+
+export function emitMods(modId?: string) {
+  modsListeners.forEach((l) => {
+    try {
+      l(modId);
+    } catch (e) {
+      // ignore
+    }
+  });
+}
+
 export async function computeCount(getServerCount: () => Promise<number>, getLocalCount: () => Promise<number>) {
   try {
     const sc = await getServerCount();

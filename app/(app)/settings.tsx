@@ -70,7 +70,7 @@ export default function SettingsScreen() {
       <View style={styles.section}>
         <TouchableOpacity style={styles.diagnosticsButton} onPress={() => router.push('/diagnostics')}>
           <Ionicons name="construct" size={20} color="#111827" />
-          <Text style={styles.diagnosticsText}>Diagnostics</Text>
+          <Text>Diagnostics</Text>
         </TouchableOpacity>
         
         <TouchableOpacity style={styles.logoutButton} onPress={handleLogout}>
@@ -105,6 +105,9 @@ const styles = StyleSheet.create({
     textTransform: 'uppercase',
     letterSpacing: 0.5,
     marginBottom: 12,
+  },
+  diagnosticsButton: {
+    marginTop: 12,
   },
   userCard: {
     flexDirection: 'row',

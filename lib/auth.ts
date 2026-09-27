@@ -9,6 +9,7 @@ import type { User, AuthResponse } from './types';
 const TOKEN_KEY = 'bunai_auth_token';
 const USER_KEY = 'bunai_user';
 const EXPIRES_KEY = 'bunai_token_expires';
+const REFRESH_KEY = 'bunai_refresh_token';
 
 /**
  * Store authentication data securely
@@ -32,6 +33,9 @@ export async function storeAuth(authData: AuthResponse): Promise<void> {
 
   // Store as strings only
   await SecureStore.setItemAsync(TOKEN_KEY, authData.token);
+  if (authData.refreshToken) {
+    await SecureStore.setItemAsync(REFRESH_KEY, authData.refreshToken);
+  }
   await SecureStore.setItemAsync(USER_KEY, JSON.stringify(authData.user));
   await SecureStore.setItemAsync(EXPIRES_KEY, authData.expiresAt);
 }
@@ -57,7 +61,9 @@ export async function getToken(): Promise<string | null> {
           return token;
         } else {
           // Token expired, clear it
-          await clearAuth();
+          // Do not clear refresh token here; keep it for refresh attempts
+          await SecureStore.deleteItemAsync(TOKEN_KEY).catch(() => {});
+          await SecureStore.deleteItemAsync(EXPIRES_KEY).catch(() => {});
           return null;
         }
       } catch (dateError) {
@@ -129,6 +135,20 @@ export async function clearAuth(): Promise<void> {
     await SecureStore.deleteItemAsync(EXPIRES_KEY);
   } catch (error) {
     console.error(`Error clearing ${EXPIRES_KEY}:`, error);
+  }
+  try {
+    await SecureStore.deleteItemAsync(REFRESH_KEY);
+  } catch (error) {
+    console.error(`Error clearing ${REFRESH_KEY}:`, error);
+  }
+}
+
+export async function getRefreshToken(): Promise<string | null> {
+  try {
+    const t = await SecureStore.getItemAsync(REFRESH_KEY);
+    return t;
+  } catch (e) {
+    return null;
   }
 }
 

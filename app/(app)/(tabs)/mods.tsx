@@ -11,7 +11,9 @@ import {
 } from 'react-native';
 import { useRouter } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
-import { fetchModFiles } from '@/lib/api';
+import { fetchModFiles, getApiUrl } from '@/lib/api';
+import { subscribeMods } from '@/lib/queue';
+import { getAuthHeader } from '@/lib/auth';
 import type { ModFile } from '@/lib/types';
 
 export default function ModsScreen() {
@@ -39,6 +41,10 @@ export default function ModsScreen() {
 
   useEffect(() => {
     loadModFiles();
+    const unsub = subscribeMods(() => {
+      loadModFiles();
+    });
+    return () => unsub();
   }, [loadModFiles]);
 
   const handleRefresh = () => {
@@ -78,6 +84,55 @@ export default function ModsScreen() {
       </View>
     </TouchableOpacity>
   );
+
+  const handleDelete = async (id: string) => {
+    // confirm
+    const ok = await new Promise<boolean>((resolve) => {
+      // Use Alert with buttons
+      const { Alert } = require('react-native');
+      Alert.alert(
+        'Delete MOD',
+        'Are you sure you want to delete this MOD file?',
+        [
+          { text: 'Cancel', style: 'cancel', onPress: () => resolve(false) },
+          { text: 'Delete', style: 'destructive', onPress: () => resolve(true) },
+        ],
+        { cancelable: true }
+      );
+    });
+
+    if (!ok) return;
+
+    try {
+      const authHeader = await getAuthHeader();
+      if (!authHeader || Object.keys(authHeader).length === 0) {
+        const { Alert } = require('react-native');
+        Alert.alert('Not authenticated', 'Please login to delete MOD files.');
+        return;
+      }
+
+      // Optimistic UI update
+      setModFiles((prev) => prev.filter((m) => m.id !== id));
+
+      const base = getApiUrl();
+      const res = await fetch(`${base}/api/mods/${id}`, { method: 'DELETE', headers: { ...authHeader } });
+      if (!res.ok) {
+        // revert and show error
+        await loadModFiles();
+        const { Alert } = require('react-native');
+        Alert.alert('Delete failed', 'Failed to delete MOD file');
+        return;
+      }
+
+      // refresh list to be sure
+      loadModFiles();
+    } catch (err) {
+      console.error('Failed to delete mod:', err);
+      await loadModFiles();
+      const { Alert } = require('react-native');
+      Alert.alert('Delete failed', err instanceof Error ? err.message : 'Unknown error');
+    }
+  };
 
   if (isLoading && !isRefreshing) {
     return (
@@ -127,7 +182,19 @@ export default function ModsScreen() {
       <FlatList
         data={modFiles}
         keyExtractor={(item) => item.id}
-        renderItem={renderModCard}
+        renderItem={({ item }) => (
+          <View>
+            {renderModCard({ item })}
+            <View style={{ paddingHorizontal: 16, marginBottom: 12 }}>
+              <TouchableOpacity
+                  onPress={() => handleDelete(item.id)}
+                style={{ backgroundColor: '#fee2e2', padding: 10, borderRadius: 8 }}
+              >
+                <Text style={{ color: '#b91c1c', textAlign: 'center', fontWeight: '600' }}>Delete</Text>
+              </TouchableOpacity>
+            </View>
+          </View>
+        )}
         contentContainerStyle={styles.list}
         refreshControl={
           <RefreshControl
