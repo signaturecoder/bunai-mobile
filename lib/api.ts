@@ -181,6 +181,35 @@ export async function getDesign(id: string) {
   return apiFetch<any>(`/api/designs/${id}`);
 }
 
+export async function updateDesign(id: string, payload: {
+  filename?: string;
+  description?: string | null;
+  tags?: string[];
+  fileData?: string; // base64
+  metadata?: any;
+  thumbnail?: string | null;
+}) {
+  const authHeader = await getAuthHeader();
+  const res = await fetch(`${API_BASE_URL}/api/designs/${id}`, {
+    method: 'PATCH',
+    headers: {
+      'Content-Type': 'application/json',
+      ...authHeader,
+    },
+    body: JSON.stringify(payload),
+  });
+
+  if (!res.ok) {
+    const parsed = await res.json().catch(() => ({ error: 'Update failed' }));
+    const message = parsed.message || parsed.error || `HTTP ${res.status}`;
+    const error = new Error(message);
+    (error as any).code = parsed.error || parsed.code || null;
+    throw error;
+  }
+
+  return res.json();
+}
+
 export async function compileDesign(designId: string) {
   // Single-design compile (server will return base64 and filename)
   const endpoint = `/api/compile/compile-design`;
