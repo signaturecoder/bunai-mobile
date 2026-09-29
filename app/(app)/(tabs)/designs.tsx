@@ -16,6 +16,22 @@ import { getDesigns, getApiUrl } from '@/lib/api';
 import { getAuthHeader } from '@/lib/auth';
 import { emit } from '@/lib/queue';
 
+const extractTotalPicks = (item: any): string => {
+  const direct = item?.totalPicks;
+  if (typeof direct === 'number' && Number.isFinite(direct)) return String(direct);
+
+  const metadataTotal = item?.metadata?.totalPicks;
+  if (typeof metadataTotal === 'number' && Number.isFinite(metadataTotal)) return String(metadataTotal);
+
+  const entries = item?.metadata?.entries;
+  if (Array.isArray(entries) && entries.length > 0) {
+    const lastSubTotal = Number(entries[entries.length - 1]?.subTotal);
+    if (Number.isFinite(lastSubTotal) && lastSubTotal > 0) return String(lastSubTotal);
+  }
+
+  return '--';
+};
+
 export default function DesignsScreen() {
   const [designs, setDesigns] = useState<any[]>([]);
   const [isLoading, setIsLoading] = useState(true);
@@ -81,6 +97,9 @@ export default function DesignsScreen() {
   };
 
   const renderItem = ({ item }: { item: any }) => {
+    const picksValue = extractTotalPicks(item);
+    const picksLabel = `${picksValue} picks`;
+
     return (
       <View style={styles.card}>
         <TouchableOpacity style={styles.cardHeader} onPress={() => router.push(`/(app)/design/${item.id}`)} activeOpacity={0.7}>
@@ -89,6 +108,7 @@ export default function DesignsScreen() {
           </View>
           <View style={styles.cardInfo}>
             <Text style={styles.cardTitle}>{item.filename}</Text>
+            <Text style={styles.cardPicks}>{picksLabel}</Text>
             <Text style={styles.cardSubtitle}>{item.tags?.join(', ')}</Text>
           </View>
           <Ionicons name="chevron-forward" size={24} color="#9ca3af" />
@@ -184,6 +204,7 @@ const styles = StyleSheet.create({
   cardIcon: { width: 48, height: 48, borderRadius: 12, backgroundColor: '#f3e8ff', justifyContent: 'center', alignItems: 'center', marginRight: 12 },
   cardInfo: { flex: 1 },
   cardTitle: { fontSize: 16, fontWeight: '600', color: '#111827' },
+  cardPicks: { fontSize: 14, fontWeight: '700', color: '#15803d', marginTop: 2 },
   cardSubtitle: { fontSize: 14, color: '#6b7280', marginTop: 2 },
   cardMeta: { flexDirection: 'row', justifyContent: 'space-between', marginTop: 12, paddingTop: 12, borderTopWidth: 1, borderTopColor: '#f3f4f6' },
   cardDate: { fontSize: 12, color: '#9ca3af' },

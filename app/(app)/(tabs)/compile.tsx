@@ -26,6 +26,7 @@ export default function CompileScreen() {
   const [isSaving, setIsSaving] = useState(false);
   const [modalError, setModalError] = useState<string | null>(null);
   const [editCtx, setEditCtx] = useState<any | null>(null);
+  const [saveMode, setSaveMode] = useState<'new' | 'update'>('new');
   const router = useRouter();
 
   useEffect(() => {
@@ -68,6 +69,8 @@ export default function CompileScreen() {
       const edit = await getEditContext();
       setEditCtx(edit || null);
       setModalName((edit && edit.modName) ? edit.modName : suggested);
+      // Safety default: create a new MOD unless user explicitly chooses update.
+      setSaveMode('new');
     } catch (err) {
       Alert.alert('Compile failed', err instanceof Error ? err.message : 'Unknown error');
     } finally {
@@ -102,9 +105,11 @@ export default function CompileScreen() {
     setModalError(null);
     setIsSaving(true);
     try {
-      // Check edit context: if editing an existing mod, call updateMod
+      // Update existing MOD only when user explicitly opts into update mode.
       const edit = editCtx || await getEditContext();
-      if (edit && edit.editModId) {
+      const shouldUpdate = Boolean(edit && edit.editModId && saveMode === 'update');
+
+      if (shouldUpdate) {
         const res = await updateMod(edit.editModId, {
           name: modalName.trim(),
           description: null,
@@ -134,6 +139,9 @@ export default function CompileScreen() {
         }
       }
 
+      // Avoid stale edit context causing accidental updates on next compile.
+      await clearEditContext();
+
       // Clear server cart
       const authHeader = await getAuthHeader();
       if (authHeader && Object.keys(authHeader).length > 0) {
@@ -162,6 +170,7 @@ export default function CompileScreen() {
   const handleCancelSave = () => {
     setCompiled(null);
     setModalName('');
+    setSaveMode('new');
   };
 
   const handleRemove = async (id: string) => {
@@ -213,8 +222,46 @@ export default function CompileScreen() {
         <Modal visible={true} animationType="slide" transparent={true}>
           <View style={{ flex: 1, justifyContent: 'center', alignItems: 'center', backgroundColor: 'rgba(0,0,0,0.5)' }}>
             <View style={{ width: '90%', backgroundColor: '#fff', padding: 16, borderRadius: 8 }}>
-              <Text style={{ fontSize: 16, fontWeight: '700', marginBottom: 8 }}>{editCtx && editCtx.editModId ? 'Update Module' : 'Save Module'}</Text>
-              <Text style={{ fontSize: 13, color: '#6b7280', marginBottom: 12 }}>{editCtx && editCtx.editModId ? 'Update the name and save changes to the existing MOD file' : 'Enter a name for the compiled MOD file'}</Text>
+              <Text style={{ fontSize: 16, fontWeight: '700', marginBottom: 8 }}>{saveMode === 'update' ? 'Update Module' : 'Save New Module'}</Text>
+              <Text style={{ fontSize: 13, color: '#6b7280', marginBottom: 12 }}>
+                {saveMode === 'update'
+                  ? 'Update the existing MOD file with this newly compiled output.'
+                  : 'Create a new MOD file from this compiled output.'}
+              </Text>
+
+              {editCtx && editCtx.editModId ? (
+                <View style={{ flexDirection: 'row', gap: 8, marginBottom: 12 }}>
+                  <TouchableOpacity
+                    onPress={() => setSaveMode('new')}
+                    style={{
+                      flex: 1,
+                      paddingVertical: 8,
+                      borderRadius: 6,
+                      borderWidth: 1,
+                      borderColor: saveMode === 'new' ? '#2563eb' : '#d1d5db',
+                      backgroundColor: saveMode === 'new' ? '#dbeafe' : '#fff',
+                      alignItems: 'center',
+                    }}
+                  >
+                    <Text style={{ color: saveMode === 'new' ? '#1d4ed8' : '#374151', fontWeight: '700' }}>Save as New</Text>
+                  </TouchableOpacity>
+                  <TouchableOpacity
+                    onPress={() => setSaveMode('update')}
+                    style={{
+                      flex: 1,
+                      paddingVertical: 8,
+                      borderRadius: 6,
+                      borderWidth: 1,
+                      borderColor: saveMode === 'update' ? '#7c3aed' : '#d1d5db',
+                      backgroundColor: saveMode === 'update' ? '#f3e8ff' : '#fff',
+                      alignItems: 'center',
+                    }}
+                  >
+                    <Text style={{ color: saveMode === 'update' ? '#6d28d9' : '#374151', fontWeight: '700' }}>Update Existing</Text>
+                  </TouchableOpacity>
+                </View>
+              ) : null}
+
               <TextInput value={modalName} onChangeText={(v) => { setModalName(v); setModalError(null); }} style={{ borderWidth: 1, borderColor: '#e5e7eb', padding: 10, borderRadius: 6, marginBottom: 8 }} />
               {modalError ? (
                 <Text style={{ color: '#ef4444', marginBottom: 8 }}>{modalError}</Text>
@@ -224,7 +271,7 @@ export default function CompileScreen() {
                   <Text style={{ color: '#6b7280' }}>Cancel</Text>
                 </TouchableOpacity>
                 <TouchableOpacity onPress={handleConfirmSave} style={{ paddingVertical: 10, paddingHorizontal: 12 }} disabled={isSaving}>
-                  {isSaving ? <ActivityIndicator /> : <Text style={{ color: '#111', fontWeight: '700' }}>{editCtx && editCtx.editModId ? 'Update' : 'Save'}</Text>}
+                  {isSaving ? <ActivityIndicator /> : <Text style={{ color: '#111', fontWeight: '700' }}>{saveMode === 'update' ? 'Update' : 'Save'}</Text>}
                 </TouchableOpacity>
               </View>
             </View>
