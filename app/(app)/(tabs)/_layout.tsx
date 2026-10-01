@@ -2,15 +2,17 @@ import { Tabs, useRouter } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import { useEffect, useRef, useState } from 'react';
 import AsyncStorage from '@react-native-async-storage/async-storage';
-import { Modal, PanResponder, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
+import { Modal, PanResponder, StyleSheet, Text, TouchableOpacity, View, Alert } from 'react-native';
 import { getAuthHeader } from '@/lib/auth';
 import { getApiUrl } from '@/lib/api';
 import { subscribe, computeCount, hasQueueState, getQueueState, setQueueState, getQueueVersion } from '@/lib/queue';
+import { useAuth } from '@/contexts/AuthContext';
 
 export default function TabsLayout() {
   const [badgeCount, setBadgeCount] = useState(0);
   const [menuOpen, setMenuOpen] = useState(false);
   const router = useRouter();
+  const { sessionExpired, acknowledgeSessionExpired } = useAuth();
 
   const panResponder = useRef(
     PanResponder.create({
@@ -164,6 +166,22 @@ export default function TabsLayout() {
             </TouchableOpacity>
           </View>
           <TouchableOpacity style={styles.overlayTapArea} activeOpacity={1} onPress={() => setMenuOpen(false)} />
+        </View>
+      </Modal>
+      <Modal visible={sessionExpired} animationType="fade" transparent onRequestClose={() => acknowledgeSessionExpired()}>
+        <View style={{ flex: 1, backgroundColor: 'rgba(0,0,0,0.4)', justifyContent: 'center', padding: 24 }}>
+          <View style={{ backgroundColor: '#fff', borderRadius: 12, padding: 20 }}>
+            <Text style={{ fontSize: 18, fontWeight: '700', marginBottom: 8 }}>Session expired</Text>
+            <Text style={{ color: '#6b7280', marginBottom: 16 }}>Your session has expired — please sign in again to continue.</Text>
+            <View style={{ flexDirection: 'row', justifyContent: 'flex-end', gap: 8 }}>
+              <TouchableOpacity style={{ padding: 10 }} onPress={() => acknowledgeSessionExpired()}>
+                <Text style={{ color: '#6b7280' }}>Dismiss</Text>
+              </TouchableOpacity>
+              <TouchableOpacity style={{ backgroundColor: '#7c3aed', paddingVertical: 10, paddingHorizontal: 14, borderRadius: 8 }} onPress={() => { acknowledgeSessionExpired(); router.replace('/(auth)/login'); }}>
+                <Text style={{ color: '#fff', fontWeight: '700' }}>Sign in</Text>
+              </TouchableOpacity>
+            </View>
+          </View>
         </View>
       </Modal>
     </>

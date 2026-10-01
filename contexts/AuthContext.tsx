@@ -1,6 +1,7 @@
 import { createContext, useContext, useState, useEffect, ReactNode } from 'react';
 import { getUser, getToken, clearAuth } from '@/lib/auth';
 import { ensureRefreshed } from '@/lib/api';
+import { onAuthExpired } from '@/lib/authEvents';
 import { AppState } from 'react-native';
 import type { User } from '@/lib/types';
 
@@ -11,6 +12,8 @@ interface AuthContextType {
   isRefreshing: boolean;
   logout: () => Promise<void>;
   refreshUser: () => Promise<void>;
+  sessionExpired: boolean;
+  acknowledgeSessionExpired: () => void;
 }
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
@@ -19,6 +22,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const [user, setUser] = useState<User | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [isRefreshing, setIsRefreshing] = useState(false);
+  const [sessionExpired, setSessionExpired] = useState(false);
 
   const refreshUser = async () => {
     try {
@@ -39,6 +43,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     await clearAuth();
     setUser(null);
   };
+
+  const acknowledgeSessionExpired = () => setSessionExpired(false);
 
   useEffect(() => {
     let mounted = true;
@@ -72,6 +78,19 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     };
   }, []);
 
+  // subscribe to global auth-expired events so we can show modal-ish UI if needed
+  useEffect(() => {
+    const unsubAuth = onAuthExpired(async () => {
+      // ensure local state cleared and mark session expired for UI
+      setUser(null);
+      setSessionExpired(true);
+      try {
+        await clearAuth();
+      } catch (e) {}
+    });
+    return () => unsubAuth();
+  }, []);
+
   return (
     <AuthContext.Provider
       value={{
@@ -82,6 +101,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         refreshUser,
         // expose refreshing status so UI can show reconnecting indicator
         isRefreshing,
+        sessionExpired,
+        acknowledgeSessionExpired,
       }}
     >
       {children}

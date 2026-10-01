@@ -5,6 +5,8 @@
  */
 
 import { getAuthHeader, storeAuth, clearAuth, getRefreshToken, storeAuth as storeAuthData, getTokenInfo } from './auth';
+import { emitAuthExpired } from './authEvents';
+import { router } from 'expo-router';
 import type { AuthResponse, ModFile, ModFileDetail } from './types';
 
 // Your deployed Next.js app URL
@@ -136,6 +138,23 @@ async function apiFetch<T>(
         ...options,
         headers: { 'Content-Type': 'application/json', ...authHeader, ...options.headers },
       });
+    }
+    // If still unauthorized after refresh attempt, clear auth and emit auth-expired event
+    if (res.status === 401) {
+      try {
+        await clearAuth();
+      } catch (e) {
+        // ignore
+      }
+      // emit event for UI to handle (e.g., show modal) and navigate to login
+      try {
+        emitAuthExpired();
+      } catch (e) {}
+      try {
+        router.replace('/(auth)/login');
+      } catch (e) {
+        // ignore if router not available
+      }
     }
   }
 
@@ -347,6 +366,32 @@ export async function saveModToLibrary(payload: {
     const message = parsed.message || parsed.error || `HTTP ${res.status}`;
     const error = new Error(message);
     // attach server error code if present (e.g., DUPLICATE_FILENAME)
+    (error as any).code = parsed.error || parsed.code || null;
+    throw error;
+  }
+
+  return res.json();
+}
+
+/**
+ * Create a new design by uploading a generated DB0 file
+ */
+export async function createDesign(payload: { filename: string; fileData: string; metadata?: any; description?: string | null; tags?: string[]; thumbnail?: string | null }) {
+  const authHeader = await getAuthHeader();
+  const endpoint = `/api/designs`;
+  const res = await fetch(`${API_BASE_URL}${endpoint}`, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      ...authHeader,
+    },
+    body: JSON.stringify(payload),
+  });
+
+  if (!res.ok) {
+    const parsed = await res.json().catch(() => ({ error: 'Create failed' }));
+    const message = parsed.message || parsed.error || `HTTP ${res.status}`;
+    const error = new Error(message);
     (error as any).code = parsed.error || parsed.code || null;
     throw error;
   }

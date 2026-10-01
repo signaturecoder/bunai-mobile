@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useLayoutEffect } from 'react';
 import {
   View,
   Text,
@@ -9,11 +9,16 @@ import {
   RefreshControl,
   TextInput,
   Alert,
+  Modal,
+  Platform,
+  KeyboardAvoidingView,
 } from 'react-native';
 import { useRouter } from 'expo-router';
+import { useNavigation } from '@react-navigation/native';
 import { Ionicons } from '@expo/vector-icons';
-import { getDesigns, getApiUrl } from '@/lib/api';
+import { getDesigns, getApiUrl, createDesign } from '@/lib/api';
 import { getAuthHeader } from '@/lib/auth';
+import { generateDB0File } from '@/lib/db0Generator';
 import { getQueueState, hasQueueState, setQueueState, subscribe } from '@/lib/queue';
 
 const extractTotalPicks = (item: any): string => {
@@ -41,6 +46,29 @@ export default function DesignsScreen() {
   const [queuedIds, setQueuedIds] = useState<Set<string>>(new Set());
   const [pendingCompileIds, setPendingCompileIds] = useState<Set<string>>(new Set());
   const router = useRouter();
+  const navigation: any = useNavigation();
+  const [isCreating, setIsCreating] = useState(false);
+  const [isNameModalVisible, setIsNameModalVisible] = useState(false);
+  const [newFilename, setNewFilename] = useState('UNTITLED.DB0');
+  useLayoutEffect(() => {
+    const iconColor = '#ffffff';
+    navigation.setOptions?.({
+      headerStyle: { backgroundColor: '#7c3aed' },
+      headerTintColor: iconColor,
+      headerTitleStyle: { color: iconColor },
+      headerLeft: () => (
+        <TouchableOpacity style={{ padding: 8 }} onPress={() => navigation.toggleDrawer && navigation.toggleDrawer()}>
+          <Ionicons name="menu" size={22} color={iconColor} />
+        </TouchableOpacity>
+      ),
+      headerRight: () => (
+        <TouchableOpacity style={{ padding: 8 }} onPress={openCreateModal} accessibilityLabel="Create new design">
+          <Ionicons name="add" size={22} color={iconColor} />
+        </TouchableOpacity>
+      ),
+      title: 'Designs',
+    });
+  }, [navigation]);
 
   const loadDesigns = useCallback(
     async (showRefresh = false) => {
@@ -138,6 +166,62 @@ export default function DesignsScreen() {
     }
   };
 
+  const openCreateModal = () => {
+    const defaultName = `TEMP.DB0`;
+    setNewFilename(defaultName);
+    setIsNameModalVisible(true);
+  };
+
+  const handleCreateNewDesign = async (filename?: string) => {
+    try {
+      setIsCreating(true);
+      const authHeader = await getAuthHeader();
+      if (!authHeader || Object.keys(authHeader).length === 0) {
+        Alert.alert('Sign in required', 'Please sign in to create a new design.');
+        return;
+      }
+
+      const nameToUse = filename || newFilename || `TEMP.DB0`;
+
+      // Default entry: 1 pick, box 1. The app's totalPicks uses doubled picks elsewhere,
+      // generateDB0File expects totalPicks (already doubled in other flows), so use 2 here.
+      const entries = [{ picks: 1, box: 1 }];
+      const totalPicks = 2;
+
+      const generated = await generateDB0File(entries, nameToUse, totalPicks);
+      const bytes = new Uint8Array(generated.buffer as ArrayBuffer);
+      let binary = '';
+      for (let i = 0; i < bytes.length; i++) binary += String.fromCharCode(bytes[i]);
+      const base64 = btoa(binary);
+
+      const payload = {
+        filename: generated.filename,
+        fileData: base64,
+        metadata: generated.metadata,
+        description: null,
+        tags: [],
+      };
+
+      const res = await createDesign(payload as any);
+      const newId = res?.design?.id;
+      if (newId) {
+        // Refresh list and navigate to editor
+        setIsNameModalVisible(false);
+        await loadDesigns();
+        router.push(`/(app)/design/${newId}`);
+      } else {
+        Alert.alert('Create failed', 'Failed to create design');
+      }
+    } catch (err: any) {
+      console.warn('Create new design failed', err);
+      // Show server-sent message if available
+      const msg = err?.message || (err?.toString && err.toString()) || 'Failed to create design';
+      Alert.alert('Create failed', msg);
+    } finally {
+      setIsCreating(false);
+    }
+  };
+
   const renderItem = ({ item }: { item: any }) => {
     const picksValue = extractTotalPicks(item);
     const picksLabel = `${picksValue} picks`;
@@ -210,6 +294,7 @@ export default function DesignsScreen() {
 
   return (
     <View style={styles.container}>
+      
       <View style={styles.searchContainer}>
         <View style={styles.searchInputContainer}>
           <Ionicons name="search" size={20} color="#9ca3af" style={styles.searchIcon} />
@@ -249,6 +334,59 @@ export default function DesignsScreen() {
           </View>
         }
       />
+
+      {/* Rename/Create modal */}
+      <Modal visible={isNameModalVisible} animationType="slide" transparent={true} onRequestClose={() => setIsNameModalVisible(false)}>
+        <View style={styles.modalBackdrop}>
+          <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : undefined} style={{ width: '100%', alignItems: 'center' }}>
+            <View style={[styles.modalContainer, Platform.OS === 'ios' ? { marginTop: 100 } : {}]}>
+              <Text style={styles.modalTitle}>Save new design</Text>
+              <Text style={styles.modalLabel}>Filename</Text>
+              <TextInput
+                value={newFilename}
+                onChangeText={(txt) => {
+                  // enforce uppercase, remove illegal chars, limit base name to 8 chars
+                  const cleaned = txt.replace(/[^A-Za-z0-9_.-]/g, '').toUpperCase();
+                  const lastDot = cleaned.lastIndexOf('.');
+                  let base = lastDot >= 0 ? cleaned.slice(0, lastDot) : cleaned;
+                  let ext = lastDot >= 0 ? cleaned.slice(lastDot) : '';
+                  base = base.slice(0, 8);
+                  // keep any extension the user typed but we'll normalize on save
+                  setNewFilename(base + ext);
+                }}
+                style={styles.modalInput}
+                autoCapitalize="characters"
+                autoCorrect={false}
+                placeholder="NAME.DB0"
+              />
+              <View style={styles.modalActions}>
+                <TouchableOpacity style={[styles.modalButton, styles.modalCancel]} onPress={() => setIsNameModalVisible(false)}>
+                  <Text style={styles.modalCancelText}>Cancel</Text>
+                </TouchableOpacity>
+                <TouchableOpacity
+                  style={[styles.modalButton, styles.modalPrimary]}
+                  onPress={() => {
+                      // Normalize name: strip any extension, limit base to 8 chars, append .DB0
+                      let raw = (newFilename || '').toUpperCase();
+                      // remove any extension
+                      raw = raw.replace(/\..*$/, '');
+                      const base = raw.slice(0, 8);
+                      const name = `${base}.DB0`;
+                      if (!base || base.length === 0) {
+                        Alert.alert('Invalid filename', 'Please enter a filename (1-8 alphanumeric characters)');
+                        return;
+                      }
+                      handleCreateNewDesign(name);
+                  }}
+                  disabled={isCreating}
+                >
+                  {isCreating ? <ActivityIndicator color="#fff" /> : <Text style={styles.modalPrimaryText}>Save</Text>}
+                </TouchableOpacity>
+              </View>
+            </View>
+          </KeyboardAvoidingView>
+        </View>
+      </Modal>
     </View>
   );
 }
@@ -265,6 +403,9 @@ const styles = StyleSheet.create({
   searchIcon: { marginRight: 8 },
   searchInput: { flex: 1, paddingVertical: 12, fontSize: 16, color: '#111827' },
   list: { padding: 16, paddingBottom: 32 },
+  headerActions: { padding: 12, paddingHorizontal: 16, backgroundColor: '#fff', borderBottomWidth: 1, borderBottomColor: '#e5e7eb' },
+  newButton: { backgroundColor: '#7c3aed', paddingVertical: 10, paddingHorizontal: 14, borderRadius: 10, alignItems: 'center', alignSelf: 'flex-start' },
+  newButtonText: { color: '#fff', fontWeight: '800' },
   card: { backgroundColor: '#fff', borderRadius: 12, padding: 16, marginBottom: 12, borderWidth: 1, borderColor: '#e5e7eb' },
   cardHeader: { flexDirection: 'row', alignItems: 'center' },
   cardIcon: { width: 48, height: 48, borderRadius: 12, backgroundColor: '#f3e8ff', justifyContent: 'center', alignItems: 'center', marginRight: 12 },
@@ -299,4 +440,18 @@ const styles = StyleSheet.create({
   emptyState: { alignItems: 'center', padding: 48 },
   emptyText: { fontSize: 18, fontWeight: '600', color: '#6b7280', marginTop: 16 },
   emptySubtext: { fontSize: 14, color: '#9ca3af', textAlign: 'center', marginTop: 8 },
+  headerRow: { paddingHorizontal: 16, paddingVertical: 12, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', backgroundColor: '#fff', borderBottomWidth: 1, borderBottomColor: '#e5e7eb' },
+  screenTitle: { fontSize: 18, fontWeight: '700', color: '#111827' },
+  headerIconButton: { padding: 8, borderRadius: 8 },
+  modalBackdrop: { flex: 1, backgroundColor: 'rgba(0,0,0,0.4)', justifyContent: 'center', alignItems: 'center' },
+  modalContainer: { width: '92%', backgroundColor: '#fff', borderRadius: 12, padding: 16, shadowColor: '#000', shadowOpacity: 0.08, shadowRadius: 10, elevation: 6 },
+  modalTitle: { fontSize: 18, fontWeight: '700', color: '#111827', marginBottom: 8 },
+  modalLabel: { fontSize: 12, color: '#6b7280', marginBottom: 6 },
+  modalInput: { borderWidth: 1, borderColor: '#e5e7eb', borderRadius: 8, paddingHorizontal: 12, paddingVertical: 10, fontSize: 16, color: '#111827', backgroundColor: '#fff' },
+  modalActions: { flexDirection: 'row', justifyContent: 'flex-end', gap: 8, marginTop: 12 },
+  modalButton: { paddingHorizontal: 14, paddingVertical: 10, borderRadius: 8, minWidth: 84, alignItems: 'center', justifyContent: 'center' },
+  modalCancel: { backgroundColor: '#f3f4f6' },
+  modalCancelText: { color: '#374151', fontWeight: '700' },
+  modalPrimary: { backgroundColor: '#7c3aed' },
+  modalPrimaryText: { color: '#fff', fontWeight: '800' },
 });
