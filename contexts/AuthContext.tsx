@@ -1,11 +1,14 @@
 import { createContext, useContext, useState, useEffect, ReactNode } from 'react';
 import { getUser, getToken, clearAuth } from '@/lib/auth';
+import { ensureRefreshed } from '@/lib/api';
+import { AppState } from 'react-native';
 import type { User } from '@/lib/types';
 
 interface AuthContextType {
   user: User | null;
   isLoading: boolean;
   isAuthenticated: boolean;
+  isRefreshing: boolean;
   logout: () => Promise<void>;
   refreshUser: () => Promise<void>;
 }
@@ -15,6 +18,7 @@ const AuthContext = createContext<AuthContextType | undefined>(undefined);
 export function AuthProvider({ children }: { children: ReactNode }) {
   const [user, setUser] = useState<User | null>(null);
   const [isLoading, setIsLoading] = useState(true);
+  const [isRefreshing, setIsRefreshing] = useState(false);
 
   const refreshUser = async () => {
     try {
@@ -37,11 +41,35 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   };
 
   useEffect(() => {
+    let mounted = true;
     const init = async () => {
       await refreshUser();
-      setIsLoading(false);
+      if (mounted) setIsLoading(false);
     };
     init();
+
+    // Refresh when app comes to foreground
+    const sub = AppState.addEventListener('change', async (state) => {
+      if (state === 'active') {
+        try {
+          setIsRefreshing(true);
+          await ensureRefreshed();
+          await refreshUser();
+        } finally {
+          setIsRefreshing(false);
+        }
+      }
+    });
+
+    return () => {
+      mounted = false;
+      // subscription may provide remove()
+      try {
+        (sub as any)?.remove?.();
+      } catch (e) {
+        // ignore
+      }
+    };
   }, []);
 
   return (
@@ -52,6 +80,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         isAuthenticated: user !== null,
         logout,
         refreshUser,
+        // expose refreshing status so UI can show reconnecting indicator
+        isRefreshing,
       }}
     >
       {children}

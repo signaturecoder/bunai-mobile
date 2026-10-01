@@ -4,13 +4,92 @@
  * All requests to your existing /api/* endpoints
  */
 
-import { getAuthHeader, storeAuth, clearAuth } from './auth';
-import { getRefreshToken, storeAuth as storeAuthData } from './auth';
+import { getAuthHeader, storeAuth, clearAuth, getRefreshToken, storeAuth as storeAuthData, getTokenInfo } from './auth';
 import type { AuthResponse, ModFile, ModFileDetail } from './types';
 
 // Your deployed Next.js app URL
 // In development, you can use your local IP or ngrok
 const API_BASE_URL = process.env.EXPO_PUBLIC_API_URL || 'https://gamchadesign-git-staging-sanu-kumars-projects.vercel.app';
+
+// Single-flight refresh promise to coalesce concurrent refresh attempts
+let refreshingPromise: Promise<boolean> | null = null;
+
+function delay(ms: number) {
+  return new Promise((res) => setTimeout(res, ms));
+}
+
+async function performRefreshWithRetries(): Promise<boolean> {
+  const refreshToken = await getRefreshToken();
+  if (!refreshToken) return false;
+
+  const attempts = [500, 1000, 2000];
+  for (let i = 0; i < attempts.length; i++) {
+    try {
+      const r = await fetch(`${API_BASE_URL}/api/auth/refresh`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ refreshToken }),
+      });
+
+      if (r.ok) {
+        const json = await r.json();
+        const newAuth = {
+          token: json.accessToken || json.token,
+          refreshToken: json.refreshToken || refreshToken,
+          user: json.user || undefined,
+          expiresAt: json.expiresAt,
+        };
+        await storeAuthData(newAuth as any);
+        return true;
+      }
+
+      // 4xx likely means refresh token invalid/expired — stop retrying
+      if (r.status >= 400 && r.status < 500) {
+        try {
+          await clearAuth();
+        } catch (e) {
+          // ignore
+        }
+        return false;
+      }
+
+      // otherwise treat as transient and retry
+    } catch (e) {
+      // network error — will retry
+    }
+
+    // wait before next attempt
+    await delay(attempts[i]);
+  }
+
+  // final attempt: clear auth to be safe
+  try {
+    await clearAuth();
+  } catch (e) {}
+  return false;
+}
+
+async function ensureRefreshed(): Promise<boolean> {
+  if (refreshingPromise) return refreshingPromise;
+  refreshingPromise = performRefreshWithRetries();
+  try {
+    const ok = await refreshingPromise;
+    return ok;
+  } finally {
+    refreshingPromise = null;
+  }
+}
+
+async function tryRefreshOnce(): Promise<boolean> {
+  try {
+    return await ensureRefreshed();
+  } catch (e) {
+    return false;
+  }
+}
+
+// Exported for callers that want to proactively ensure tokens are valid
+export { ensureRefreshed };
 
 /**
  * Base fetch wrapper with auth headers
@@ -19,8 +98,26 @@ async function apiFetch<T>(
   endpoint: string,
   options: RequestInit = {}
 ): Promise<T> {
-  // Attempt request, and if 401 attempt refresh token flow once
+  // Single-flight refresh state held in module scope
+  // Attempt request; if 401 or token near expiry attempt refresh flow
   let authHeader = await getAuthHeader();
+
+  // proactive refresh: if token expires soon, try refresh first
+  try {
+    const info = await getTokenInfo();
+    if (info.token && info.expiresAt) {
+      const now = Date.now();
+      const remaining = info.expiresAt - now;
+      const PROACTIVE_MS = 60 * 1000; // 60s
+      if (remaining > 0 && remaining <= PROACTIVE_MS) {
+        await ensureRefreshed();
+        authHeader = await getAuthHeader();
+      }
+    }
+  } catch (e) {
+    // ignore
+  }
+
   let res = await fetch(`${API_BASE_URL}${endpoint}`, {
     ...options,
     headers: {
@@ -31,49 +128,21 @@ async function apiFetch<T>(
   });
 
   if (res.status === 401) {
-    // Try refresh token
-    const refreshToken = await getRefreshToken();
-    if (refreshToken) {
-      try {
-        const r = await fetch(`${API_BASE_URL}/api/auth/refresh`, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ refreshToken }),
-        });
-        if (r.ok) {
-          const json = await r.json();
-          // server returns accessToken, refreshToken, expiresAt
-          const newAuth = {
-            token: json.accessToken || json.token,
-            refreshToken: json.refreshToken || refreshToken,
-            user: json.user || undefined,
-            expiresAt: json.expiresAt,
-          };
-          await storeAuthData(newAuth as any);
-          // retry original request with new token
-          authHeader = await getAuthHeader();
-          res = await fetch(`${API_BASE_URL}${endpoint}`, {
-            ...options,
-            headers: { 'Content-Type': 'application/json', ...authHeader, ...options.headers },
-          });
-        } else {
-          // refresh failed; clear auth and throw
-          await clearAuth();
-          throw new Error('Session expired. Please login again.');
-        }
-      } catch (e) {
-        await clearAuth();
-        throw new Error('Session expired. Please login again.');
-      }
-    } else {
-      await clearAuth();
-      throw new Error('Session expired. Please login again.');
+    // Try refresh token and retry once
+    const ok = await tryRefreshOnce();
+    if (ok) {
+      authHeader = await getAuthHeader();
+      res = await fetch(`${API_BASE_URL}${endpoint}`, {
+        ...options,
+        headers: { 'Content-Type': 'application/json', ...authHeader, ...options.headers },
+      });
     }
   }
 
   if (!res.ok) {
-    const error = await res.json().catch(() => ({ error: 'Request failed' }));
-    throw new Error(error.error || `HTTP ${res.status}`);
+    const parsed = await res.json().catch(() => ({ error: 'Request failed' }));
+    const message = parsed?.message || parsed?.error || `HTTP ${res.status}`;
+    throw new Error(typeof message === 'string' ? message : JSON.stringify(message));
   }
 
   return res.json();

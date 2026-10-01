@@ -141,7 +141,7 @@ export default function TabsLayout() {
         <Tabs.Screen
           name="mods"
           options={{
-            title: 'MODs',
+            title: 'Write',
             tabBarIcon: ({ color, size }) => (
               <Ionicons name="folder-outline" size={size} color={color} />
             ),

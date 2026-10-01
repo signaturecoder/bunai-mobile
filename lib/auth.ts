@@ -153,6 +153,30 @@ export async function getRefreshToken(): Promise<string | null> {
 }
 
 /**
+ * Returns token and expiry timestamp (ms) if available.
+ */
+export async function getTokenInfo(): Promise<{ token: string | null; expiresAt: number | null }> {
+  try {
+    const token = await SecureStore.getItemAsync(TOKEN_KEY);
+    const expiresAt = await SecureStore.getItemAsync(EXPIRES_KEY);
+
+    let expiresAtMs: number | null = null;
+    if (expiresAt) {
+      try {
+        const d = new Date(expiresAt);
+        if (!isNaN(d.getTime())) expiresAtMs = d.getTime();
+      } catch (e) {
+        // ignore
+      }
+    }
+
+    return { token: token || null, expiresAt: expiresAtMs };
+  } catch (e) {
+    return { token: null, expiresAt: null };
+  }
+}
+
+/**
  * Get auth header for API requests
  */
 export async function getAuthHeader(): Promise<Record<string, string>> {
