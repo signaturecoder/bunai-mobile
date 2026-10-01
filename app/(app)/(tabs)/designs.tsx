@@ -8,13 +8,13 @@ import {
   ActivityIndicator,
   RefreshControl,
   TextInput,
-  Button,
+  Alert,
 } from 'react-native';
 import { useRouter } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import { getDesigns, getApiUrl } from '@/lib/api';
 import { getAuthHeader } from '@/lib/auth';
-import { emit } from '@/lib/queue';
+import { getQueueState, hasQueueState, setQueueState, subscribe } from '@/lib/queue';
 
 const extractTotalPicks = (item: any): string => {
   const direct = item?.totalPicks;
@@ -38,6 +38,8 @@ export default function DesignsScreen() {
   const [isRefreshing, setIsRefreshing] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
   const [error, setError] = useState<string | null>(null);
+  const [queuedIds, setQueuedIds] = useState<Set<string>>(new Set());
+  const [pendingCompileIds, setPendingCompileIds] = useState<Set<string>>(new Set());
   const router = useRouter();
 
   const loadDesigns = useCallback(
@@ -61,44 +63,86 @@ export default function DesignsScreen() {
     loadDesigns();
   }, [loadDesigns]);
 
+  useEffect(() => {
+    if (hasQueueState()) {
+      setQueuedIds(new Set(getQueueState().map((item: any) => item.id)));
+    }
+
+    const unsub = subscribe((_, items) => {
+      if (items) {
+        setQueuedIds(new Set(items.map((queuedItem: any) => queuedItem.id)));
+      }
+    });
+
+    return () => unsub();
+  }, []);
+
   const handleRefresh = () => loadDesigns(true);
 
   const handleAddToCompile = async (item: any) => {
+    if (queuedIds.has(item.id) || pendingCompileIds.has(item.id)) {
+      return;
+    }
+
+    setPendingCompileIds((prev) => new Set(prev).add(item.id));
+
     try {
       const authHeader = await getAuthHeader();
       const minimal = { id: item.id, filename: item.filename, thumbnail: item.thumbnail };
 
       if (authHeader && Object.keys(authHeader).length > 0) {
         const base = getApiUrl();
-        const getRes = await fetch(`${base}/api/compile`, { headers: { ...authHeader } });
-        let existing: any[] = [];
-        if (getRes.ok) {
-          const json = await getRes.json();
-          existing = json.items || [];
+        const cached = hasQueueState() ? getQueueState() : [];
+        let existing: any[] = Array.isArray(cached) ? cached : [];
+
+        if (existing.length === 0) {
+          const getRes = await fetch(`${base}/api/compile`, { headers: { ...authHeader } });
+          if (getRes.ok) {
+            const json = await getRes.json();
+            existing = json.items || [];
+          }
         }
 
-        if (!existing.some((d) => d.id === minimal.id)) {
-          existing.push(minimal);
-          await fetch(`${base}/api/compile`, {
+        if (existing.some((d) => d.id === minimal.id)) {
+          return;
+        }
+
+        const optimisticItems = [...existing, minimal];
+        setQueueState(optimisticItems);
+
+        const saveRes = await fetch(`${base}/api/compile`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json', ...authHeader },
-            body: JSON.stringify({ items: existing }),
+            body: JSON.stringify({ items: optimisticItems }),
           });
-          // notify listeners with server count and items
-          emit(existing.length, existing);
+
+        if (!saveRes.ok) {
+          setQueueState(existing);
+          throw new Error('Failed to add design to compile queue');
         }
+
         return;
       }
       // We require authentication for compile/cart on mobile; do not use local fallback
       console.warn('Add to compile attempted while unauthenticated');
+      Alert.alert('Not authenticated', 'Please login to add designs to the compile queue.');
     } catch (err) {
       console.warn('Add to compile failed:', err);
+      Alert.alert('Add failed', err instanceof Error ? err.message : 'Failed to add design to compile queue');
+    } finally {
+      setPendingCompileIds((prev) => {
+        const next = new Set(prev);
+        next.delete(item.id);
+        return next;
+      });
     }
   };
 
   const renderItem = ({ item }: { item: any }) => {
     const picksValue = extractTotalPicks(item);
     const picksLabel = `${picksValue} picks`;
+    const isQueued = queuedIds.has(item.id);
+    const isPending = pendingCompileIds.has(item.id);
 
     return (
       <View style={styles.card}>
@@ -114,8 +158,30 @@ export default function DesignsScreen() {
           <Ionicons name="chevron-forward" size={24} color="#9ca3af" />
         </TouchableOpacity>
 
-        <View style={styles.section}>
-          <Button title="Add to Compile" onPress={() => handleAddToCompile(item)} />
+        <View style={styles.cardFooter}>
+          <Text style={styles.cardFooterHint}>{isQueued ? 'Ready in compile queue' : 'Add this design to the active compile queue'}</Text>
+          <TouchableOpacity
+            style={[
+              styles.inlineActionButton,
+              isQueued && styles.inlineActionButtonSuccess,
+              (isPending || isQueued) && styles.inlineActionButtonDisabled,
+            ]}
+            onPress={() => handleAddToCompile(item)}
+            disabled={isPending || isQueued}
+          >
+            {isPending ? (
+              <ActivityIndicator size="small" color="#4338ca" />
+            ) : (
+              <Ionicons
+                name={isQueued ? 'checkmark-circle' : 'add-circle-outline'}
+                size={16}
+                color={isQueued ? '#15803d' : '#4338ca'}
+              />
+            )}
+            <Text style={[styles.inlineActionText, isQueued && styles.inlineActionTextSuccess]}>
+              {isPending ? 'Adding...' : isQueued ? 'Added' : 'Add to Compile'}
+            </Text>
+          </TouchableOpacity>
         </View>
       </View>
     );
@@ -199,17 +265,38 @@ const styles = StyleSheet.create({
   searchIcon: { marginRight: 8 },
   searchInput: { flex: 1, paddingVertical: 12, fontSize: 16, color: '#111827' },
   list: { padding: 16, paddingBottom: 32 },
-  card: { backgroundColor: '#fff', borderRadius: 12, padding: 16, marginBottom: 12 },
+  card: { backgroundColor: '#fff', borderRadius: 12, padding: 16, marginBottom: 12, borderWidth: 1, borderColor: '#e5e7eb' },
   cardHeader: { flexDirection: 'row', alignItems: 'center' },
   cardIcon: { width: 48, height: 48, borderRadius: 12, backgroundColor: '#f3e8ff', justifyContent: 'center', alignItems: 'center', marginRight: 12 },
   cardInfo: { flex: 1 },
   cardTitle: { fontSize: 16, fontWeight: '600', color: '#111827' },
   cardPicks: { fontSize: 14, fontWeight: '700', color: '#15803d', marginTop: 2 },
   cardSubtitle: { fontSize: 14, color: '#6b7280', marginTop: 2 },
+  cardFooter: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginTop: 14, paddingTop: 14, borderTopWidth: 1, borderTopColor: '#f3f4f6', gap: 12 },
+  cardFooterHint: { flex: 1, fontSize: 12, color: '#6b7280' },
+  inlineActionButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    borderWidth: 1,
+    borderColor: '#c7d2fe',
+    backgroundColor: '#eef2ff',
+    paddingHorizontal: 12,
+    paddingVertical: 9,
+    borderRadius: 999,
+  },
+  inlineActionButtonSuccess: {
+    borderColor: '#bbf7d0',
+    backgroundColor: '#f0fdf4',
+  },
+  inlineActionButtonDisabled: {
+    opacity: 0.85,
+  },
+  inlineActionText: { color: '#3730a3', fontSize: 13, fontWeight: '700' },
+  inlineActionTextSuccess: { color: '#15803d' },
   cardMeta: { flexDirection: 'row', justifyContent: 'space-between', marginTop: 12, paddingTop: 12, borderTopWidth: 1, borderTopColor: '#f3f4f6' },
   cardDate: { fontSize: 12, color: '#9ca3af' },
   emptyState: { alignItems: 'center', padding: 48 },
   emptyText: { fontSize: 18, fontWeight: '600', color: '#6b7280', marginTop: 16 },
   emptySubtext: { fontSize: 14, color: '#9ca3af', textAlign: 'center', marginTop: 8 },
-  section: { backgroundColor: '#fff', marginTop: 16, padding: 16 },
 });

@@ -5,7 +5,7 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 import { Modal, PanResponder, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 import { getAuthHeader } from '@/lib/auth';
 import { getApiUrl } from '@/lib/api';
-import { subscribe, computeCount } from '@/lib/queue';
+import { subscribe, computeCount, hasQueueState, getQueueState, setQueueState, getQueueVersion } from '@/lib/queue';
 
 export default function TabsLayout() {
   const [badgeCount, setBadgeCount] = useState(0);
@@ -47,12 +47,29 @@ export default function TabsLayout() {
     };
 
     async function refreshCount() {
+      const requestVersion = getQueueVersion();
+
       try {
         const c = await computeCount(getServerCount, getLocalCount);
-        if (mounted) setBadgeCount(c);
+        if (!mounted) return;
+
+        if (hasQueueState() && getQueueVersion() !== requestVersion) {
+          return;
+        }
+
+        if (hasQueueState()) {
+          setBadgeCount(getQueueState().length);
+          return;
+        }
+
+        setBadgeCount(c);
       } catch (e) {
         // ignore
       }
+    }
+
+    if (hasQueueState()) {
+      setBadgeCount(getQueueState().length);
     }
 
     refreshCount();

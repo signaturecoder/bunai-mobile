@@ -57,12 +57,12 @@ export default function ModsScreen() {
   };
 
   const renderModCard = ({ item }: { item: ModFile }) => (
-    <TouchableOpacity
-      style={styles.card}
-      onPress={() => router.push(`/(app)/mod/${item.id}`)}
-      activeOpacity={0.7}
-    >
-      <View style={styles.cardHeader}>
+    <View style={styles.card}>
+      <TouchableOpacity
+        style={styles.cardHeader}
+        onPress={() => router.push(`/(app)/mod/${item.id}`)}
+        activeOpacity={0.7}
+      >
         <View style={styles.cardIcon}>
           <Ionicons name="document-text" size={24} color="#7c3aed" />
         </View>
@@ -73,16 +73,24 @@ export default function ModsScreen() {
           </Text>
         </View>
         <Ionicons name="chevron-forward" size={24} color="#9ca3af" />
+      </TouchableOpacity>
+      <View style={styles.cardFooter}>
+        <Text style={styles.cardFooterHint}>Open to review or use the quick delete action.</Text>
+        <TouchableOpacity
+          onPress={() => handleDelete(item.id)}
+          style={styles.inlineDeleteAction}
+        >
+          <Ionicons name="trash-outline" size={16} color="#b91c1c" />
+          <Text style={styles.inlineDeleteText}>Delete</Text>
+        </TouchableOpacity>
       </View>
-      <View style={styles.cardMeta}>
-        <Text style={styles.cardDate}>
-          {new Date(item.createdAt).toLocaleDateString()}
-        </Text>
-        <Text style={styles.cardAuthor}>
-          by {item.createdBy.name || item.createdBy.email}
-        </Text>
-      </View>
-    </TouchableOpacity>
+    </View>
+  );
+
+  const renderItem = ({ item }: { item: ModFile }) => (
+    <View>
+      {renderModCard({ item })}
+    </View>
   );
 
   const handleDelete = async (id: string) => {
@@ -182,19 +190,7 @@ export default function ModsScreen() {
       <FlatList
         data={modFiles}
         keyExtractor={(item) => item.id}
-        renderItem={({ item }) => (
-          <View>
-            {renderModCard({ item })}
-            <View style={{ paddingHorizontal: 16, marginBottom: 12 }}>
-              <TouchableOpacity
-                  onPress={() => handleDelete(item.id)}
-                style={{ backgroundColor: '#fee2e2', padding: 10, borderRadius: 8 }}
-              >
-                <Text style={{ color: '#b91c1c', textAlign: 'center', fontWeight: '600' }}>Delete</Text>
-              </TouchableOpacity>
-            </View>
-          </View>
-        )}
+        renderItem={renderItem}
         contentContainerStyle={styles.list}
         refreshControl={
           <RefreshControl
@@ -330,6 +326,37 @@ const styles = StyleSheet.create({
   cardAuthor: {
     fontSize: 12,
     color: '#9ca3af',
+  },
+  cardFooter: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    marginTop: 12,
+    paddingTop: 12,
+    borderTopWidth: 1,
+    borderTopColor: '#f3f4f6',
+    gap: 12,
+  },
+  cardFooterHint: {
+    flex: 1,
+    fontSize: 12,
+    color: '#6b7280',
+  },
+  inlineDeleteAction: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    borderWidth: 1,
+    borderColor: '#fecaca',
+    backgroundColor: '#fef2f2',
+    borderRadius: 999,
+    paddingHorizontal: 12,
+    paddingVertical: 9,
+  },
+  inlineDeleteText: {
+    color: '#b91c1c',
+    fontSize: 13,
+    fontWeight: '700',
   },
   emptyState: {
     alignItems: 'center',

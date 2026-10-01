@@ -15,13 +15,44 @@ type Entry = {
   secondRepeatCount?: number;
 };
 
+const THREAD_OPTIONS = [1, 2, 3, 4] as const;
+const REPEAT_LEVEL_OPTIONS = [0, 1, 2] as const;
+const VALID_BOX_NUMBERS = new Set([1, 2, 3, 4, 11, 12, 13, 14, 21, 22, 23, 24]);
+
+function normalizeBoxNumber(value: number): number {
+  if (VALID_BOX_NUMBERS.has(value)) {
+    return value;
+  }
+
+  const thread = THREAD_OPTIONS.includes((value % 10) as (typeof THREAD_OPTIONS)[number])
+    ? (value % 10)
+    : 1;
+  const repeatLevel = value >= 20 ? 2 : value >= 10 ? 1 : 0;
+
+  return repeatLevel === 0 ? thread : repeatLevel * 10 + thread;
+}
+
+function getThreadNumber(box: number): number {
+  const normalized = normalizeBoxNumber(box);
+  return normalized >= 10 ? normalized % 10 : normalized;
+}
+
+function getRepeatLevel(box: number): 0 | 1 | 2 {
+  const normalized = normalizeBoxNumber(box);
+  if (normalized >= 20) return 2;
+  if (normalized >= 10) return 1;
+  return 0;
+}
+
 type RowItemProps = {
   entry: Entry;
   idx: number;
   editMode: boolean;
   isExpanded: boolean;
   onToggleExpand: (index: number) => void;
-  onOpenRowActions: (index: number) => void;
+  onAddRowBelow: (index: number) => void;
+  onDeleteRow: (index: number) => void;
+  canDelete: boolean;
   onUpdateEntry: (index: number, key: keyof Entry, value: number) => void;
 };
 
@@ -31,9 +62,22 @@ const RowItem = memo(function RowItem({
   editMode,
   isExpanded,
   onToggleExpand,
-  onOpenRowActions,
+  onAddRowBelow,
+  onDeleteRow,
+  canDelete,
   onUpdateEntry,
 }: RowItemProps) {
+  const selectedBox = normalizeBoxNumber(entry.box ?? 1);
+  const selectedThread = getThreadNumber(selectedBox);
+  const selectedRepeatLevel = getRepeatLevel(selectedBox);
+  const picksLabel = `${entry.picks || 0} picks`;
+  const boxLabel = `Box ${entry.box || 0}`;
+
+  const updateBox = (nextThread: number, nextRepeatLevel: 0 | 1 | 2) => {
+    const nextBox = nextRepeatLevel === 0 ? nextThread : nextRepeatLevel * 10 + nextThread;
+    onUpdateEntry(idx, 'box', nextBox);
+  };
+
   return (
     <View style={styles.rowCard}>
       <TouchableOpacity
@@ -44,20 +88,25 @@ const RowItem = memo(function RowItem({
         }}
         activeOpacity={editMode ? 0.7 : 1}
       >
-        <Text style={styles.rowIndex}>Row {idx + 1}</Text>
-        <View style={styles.rowHeaderMeta}>
-          <View style={styles.metricChip}><Text style={styles.rowMiniStrong}>P:{entry.picks || 0}</Text></View>
-          <View style={styles.metricChip}><Text style={styles.rowMiniStrong}>B:{entry.box || 0}</Text></View>
-          <Text style={styles.rowSubtotal}>Subtotal: {entry.subTotal || 0}</Text>
-          <Ionicons name={isExpanded ? 'chevron-up' : 'chevron-down'} size={16} color="#6b7280" />
+        <View style={styles.rowHeaderMain}>
+          <Text style={styles.rowIndex}>Row {idx + 1}</Text>
+          <Text style={styles.rowMetaLine}>{picksLabel} • {boxLabel}</Text>
         </View>
 
-        <TouchableOpacity
-          style={styles.rowActionsCompact}
-          onPress={() => onOpenRowActions(idx)}
-        >
-          <Ionicons name="ellipsis-horizontal" size={16} color="#4338ca" />
-        </TouchableOpacity>
+        <View style={styles.rowHeaderRight}>
+          <Text style={styles.rowSubtotalLabel}>Subtotal</Text>
+          <Text style={styles.rowSubtotalValue}>{entry.subTotal || 0}</Text>
+          {editMode ? (
+            <View style={styles.morePill}>
+              <Text style={styles.morePillText}>{isExpanded ? 'Close' : 'Open'}</Text>
+              <Ionicons
+                name={isExpanded ? 'chevron-up' : 'chevron-down'}
+                size={14}
+                color="#3730a3"
+              />
+            </View>
+          ) : null}
+        </View>
       </TouchableOpacity>
 
       {editMode && isExpanded ? (
@@ -74,12 +123,50 @@ const RowItem = memo(function RowItem({
 
           <View style={styles.fieldBlock}>
             <Text style={styles.fieldLabel}>Box No</Text>
-            <TextInput
-              value={String(entry.box ?? 1)}
-              keyboardType="numeric"
-              onChangeText={(v) => onUpdateEntry(idx, 'box', Number(v) || 1)}
-              style={styles.input}
-            />
+            <View style={styles.boxEditorCard}>
+              <Text style={styles.boxEditorHint}>Choose repeat level, then thread. Allowed values: 1-4, 11-14, 21-24.</Text>
+
+              <View style={styles.boxSection}>
+                <Text style={styles.boxSectionLabel}>Repeat</Text>
+                <View style={styles.choiceRow}>
+                  {REPEAT_LEVEL_OPTIONS.map((level) => {
+                    const isSelected = selectedRepeatLevel === level;
+                    const label = level === 0 ? 'None' : level === 1 ? '1st' : '2nd';
+
+                    return (
+                      <TouchableOpacity
+                        key={`repeat-${level}`}
+                        style={[styles.choiceChip, isSelected && styles.choiceChipActive]}
+                        onPress={() => updateBox(selectedThread, level)}
+                      >
+                        <Text style={[styles.choiceChipText, isSelected && styles.choiceChipTextActive]}>{label}</Text>
+                      </TouchableOpacity>
+                    );
+                  })}
+                </View>
+              </View>
+
+              <View style={styles.boxSection}>
+                <Text style={styles.boxSectionLabel}>Thread</Text>
+                <View style={styles.choiceRow}>
+                  {THREAD_OPTIONS.map((thread) => {
+                    const isSelected = selectedThread === thread;
+
+                    return (
+                      <TouchableOpacity
+                        key={`thread-${thread}`}
+                        style={[styles.choiceChip, isSelected && styles.choiceChipActive]}
+                        onPress={() => updateBox(thread, selectedRepeatLevel)}
+                      >
+                        <Text style={[styles.choiceChipText, isSelected && styles.choiceChipTextActive]}>{thread}</Text>
+                      </TouchableOpacity>
+                    );
+                  })}
+                </View>
+              </View>
+
+              <Text style={styles.boxSelectionSummary}>Selected box: {selectedBox}</Text>
+            </View>
           </View>
 
           <View style={styles.fieldBlock}>
@@ -102,6 +189,25 @@ const RowItem = memo(function RowItem({
               style={styles.input}
             />
             {(entry.secondRepeat || 0) > 0 ? <Text style={styles.repeatValue}>= {entry.secondRepeat}</Text> : null}
+          </View>
+
+          <View style={styles.inlineActionRow}>
+            <TouchableOpacity
+              style={styles.inlineActionButton}
+              onPress={() => onAddRowBelow(idx)}
+            >
+              <Ionicons name="add-circle-outline" size={16} color="#065f46" />
+              <Text style={styles.inlineActionText}>Add Below</Text>
+            </TouchableOpacity>
+
+            <TouchableOpacity
+              style={[styles.inlineActionButton, styles.inlineDeleteButton, !canDelete && styles.inlineActionDisabled]}
+              onPress={() => onDeleteRow(idx)}
+              disabled={!canDelete}
+            >
+              <Ionicons name="trash-outline" size={16} color={canDelete ? '#b91c1c' : '#9ca3af'} />
+              <Text style={[styles.inlineActionText, canDelete ? styles.inlineDeleteText : styles.inlineDisabledText]}>Delete</Text>
+            </TouchableOpacity>
           </View>
         </View>
       ) : null}
@@ -139,7 +245,6 @@ export default function DesignDetail() {
     4: '#06b6d4',
   });
   const [actionOpen, setActionOpen] = useState(false);
-  const [activeRowIndex, setActiveRowIndex] = useState<number | null>(null);
   const [editMode, setEditMode] = useState(false);
   const [expandedRow, setExpandedRow] = useState<number | null>(null);
   const [initialSignature, setInitialSignature] = useState('');
@@ -224,7 +329,7 @@ export default function DesignDetail() {
   const normalizeEntries = (rawEntries: any[]): Entry[] => {
     const mapped = (rawEntries || []).map((e: any) => ({
       picks: Number(e.picks) || 0,
-      box: Number(e.box) || 1,
+      box: normalizeBoxNumber(Number(e.box) || 1),
       subTotal: Number(e.subTotal) || 0,
       firstRepeatCount: e.firstRepeatCount !== undefined ? Number(e.firstRepeatCount) || 0 : undefined,
       secondRepeatCount: e.secondRepeatCount !== undefined ? Number(e.secondRepeatCount) || 0 : undefined,
@@ -311,7 +416,11 @@ export default function DesignDetail() {
 
   const updateEntry = useCallback((index: number, key: keyof Entry, value: number) => {
     setEntries((prev) => {
-      const updated = prev.map((row, i) => (i === index ? { ...row, [key]: value } : row));
+      const nextValue = key === 'box'
+        ? normalizeBoxNumber(value)
+        : Math.max(0, Number(value) || 0);
+
+      const updated = prev.map((row, i) => (i === index ? { ...row, [key]: nextValue } : row));
       return recalculateTotals(updated);
     });
   }, []);
@@ -322,14 +431,8 @@ export default function DesignDetail() {
       const updated = [...prev.slice(0, index + 1), row, ...prev.slice(index + 1)];
       return recalculateTotals(updated);
     });
-  }, []);
 
-  const addRowBefore = useCallback((index: number) => {
-    setEntries((prev) => {
-      const row: Entry = { picks: 0, box: 1, subTotal: 0 };
-      const updated = [...prev.slice(0, index), row, ...prev.slice(index)];
-      return recalculateTotals(updated);
-    });
+    setExpandedRow(index + 1);
   }, []);
 
   const deleteRow = useCallback((index: number) => {
@@ -433,16 +536,6 @@ export default function DesignDetail() {
 
   const expandedPreviewEntries = expandEntriesForPreview(entries);
 
-  const openRowActions = useCallback((index: number) => {
-    setActiveRowIndex(index);
-    setActionOpen(true);
-  }, []);
-
-  const closeRowActions = useCallback(() => {
-    setActionOpen(false);
-    setActiveRowIndex(null);
-  }, []);
-
   const toggleExpandRow = useCallback((index: number) => {
     setExpandedRow((prev) => (prev === index ? null : index));
   }, []);
@@ -465,10 +558,12 @@ export default function DesignDetail() {
       editMode={editMode}
       isExpanded={expandedRow === index}
       onToggleExpand={toggleExpandRow}
-      onOpenRowActions={openRowActions}
+      onAddRowBelow={addRowAfter}
+      onDeleteRow={deleteRow}
+      canDelete={entries.length > 1}
       onUpdateEntry={updateEntry}
     />
-  ), [editMode, expandedRow, openRowActions, toggleExpandRow, updateEntry]);
+  ), [addRowAfter, deleteRow, editMode, entries.length, expandedRow, toggleExpandRow, updateEntry]);
 
   if (isLoading) {
     return (
@@ -493,39 +588,20 @@ export default function DesignDetail() {
       <Stack.Screen options={{ title: design.filename }} />
       <View style={styles.topStickyPanel}>
         <View style={styles.stickyBar}>
-          <View style={styles.statsRow}>
-            <Text style={styles.statsLine}>
-              Total Picks: <Text style={styles.statsValue}>{totalPicks}</Text>
-              {'  '}•{'  '}
-              Rows: <Text style={styles.statsValue}>{entries.length}</Text>
-            </Text>
-            {isDirty ? <View style={styles.dirtyBadge}><Text style={styles.dirtyBadgeText}>Unsaved edits</Text></View> : null}
-          </View>
-
-          <View style={styles.ctaSection}>
-            <TouchableOpacity style={styles.primarySaveButton} onPress={handleSaveChanges} disabled={isSaving || !isDirty}>
-              <Ionicons name="save-outline" size={18} color="#fff" />
-              <Text style={styles.primarySaveButtonText}>{isSaving ? 'Saving' : 'Save Changes'}</Text>
-            </TouchableOpacity>
-
-            <View style={styles.secondaryCtasRight}>
-              <TouchableOpacity style={styles.iconCtaButton} onPress={() => setPreviewOpen(true)}>
-                <Ionicons name="eye-outline" size={18} color="#4338ca" />
-              </TouchableOpacity>
-
-              <TouchableOpacity
-                style={editMode ? styles.iconCtaButtonActive : styles.iconCtaButton}
-                onPress={() => {
-                  setEditMode((v) => !v);
-                  setExpandedRow(null);
-                }}
-              >
-                <Ionicons name={editMode ? 'create' : 'list'} size={18} color={editMode ? '#fff' : '#374151'} />
-              </TouchableOpacity>
-
-              <TouchableOpacity style={styles.iconCtaButton} onPress={() => addRowAfter(entries.length - 1)}>
-                <Ionicons name="add" size={20} color="#065f46" />
-              </TouchableOpacity>
+          {isDirty ? (
+            <View style={styles.statusRow}>
+              <View style={styles.dirtyBadge}><Text style={styles.dirtyBadgeText}>Unsaved edits</Text></View>
+            </View>
+          ) : null}
+          <View style={styles.summaryCard}>
+            <View style={styles.summaryStat}>
+              <Text style={styles.summaryLabel}>Total Picks</Text>
+              <Text style={styles.summaryValue}>{totalPicks}</Text>
+            </View>
+            <View style={styles.summaryDivider} />
+            <View style={styles.summaryStat}>
+              <Text style={styles.summaryLabel}>Rows</Text>
+              <Text style={styles.summaryValue}>{entries.length}</Text>
             </View>
           </View>
         </View>
@@ -545,55 +621,8 @@ export default function DesignDetail() {
         getItemLayout={(_, index) => ({ length: 68, offset: 68 * index, index })}
         keyboardShouldPersistTaps="handled"
         ListHeaderComponent={sectionHeader}
-        ListFooterComponent={<View style={{ height: 32 }} />}
+        ListFooterComponent={<View style={{ height: 108 }} />}
       />
-
-      <Modal visible={actionOpen} transparent animationType="slide" onRequestClose={closeRowActions}>
-        <View style={styles.sheetBackdrop}>
-          <TouchableOpacity style={styles.sheetOverlayTap} activeOpacity={1} onPress={closeRowActions} />
-          <View style={styles.bottomSheet}>
-            <Text style={styles.sheetTitle}>Row Actions</Text>
-            <Text style={styles.sheetSubtitle}>Row {activeRowIndex !== null ? activeRowIndex + 1 : '-'}</Text>
-
-            <TouchableOpacity
-              style={styles.sheetActionBtn}
-              onPress={() => {
-                if (activeRowIndex !== null) addRowBefore(activeRowIndex);
-                closeRowActions();
-              }}
-            >
-              <Ionicons name="arrow-up-circle-outline" size={18} color="#065f46" />
-              <Text style={styles.sheetActionText}>Add Row Above</Text>
-            </TouchableOpacity>
-
-            <TouchableOpacity
-              style={styles.sheetActionBtn}
-              onPress={() => {
-                if (activeRowIndex !== null) addRowAfter(activeRowIndex);
-                closeRowActions();
-              }}
-            >
-              <Ionicons name="arrow-down-circle-outline" size={18} color="#065f46" />
-              <Text style={styles.sheetActionText}>Add Row Below</Text>
-            </TouchableOpacity>
-
-            <TouchableOpacity
-              style={[styles.sheetActionBtn, styles.sheetDeleteBtn]}
-              onPress={() => {
-                if (activeRowIndex !== null) deleteRow(activeRowIndex);
-                closeRowActions();
-              }}
-            >
-              <Ionicons name="trash-outline" size={18} color="#b91c1c" />
-              <Text style={[styles.sheetActionText, { color: '#b91c1c' }]}>Delete Row</Text>
-            </TouchableOpacity>
-
-            <TouchableOpacity style={styles.sheetCloseBtn} onPress={closeRowActions}>
-              <Text style={styles.sheetCloseText}>Close</Text>
-            </TouchableOpacity>
-          </View>
-        </View>
-      </Modal>
 
       <Modal visible={previewOpen} transparent animationType="slide" onRequestClose={() => setPreviewOpen(false)}>
         <View style={styles.sheetBackdrop}>
@@ -638,10 +667,10 @@ export default function DesignDetail() {
                     const pickCount = (Number(entry.picks) || 0) * 2;
                     const dynamicHeight = Math.max(8, Math.round(pickCount * 1.2));
                     return (
-                    <View
-                      key={`pv-${idx}`}
-                      style={styles.previewBandLine}
-                    >
+                      <View
+                        key={`pv-${idx}`}
+                        style={styles.previewBandLine}
+                      >
                       <View style={[styles.previewBandLabelWrap, { height: dynamicHeight }]}>
                         <Text style={styles.previewBandLabel}>{pickCount}x</Text>
                       </View>
@@ -650,7 +679,7 @@ export default function DesignDetail() {
                           styles.previewRow,
                           {
                             height: dynamicHeight,
-                            backgroundColor: rowColors[entry.box] || '#9ca3af',
+                            backgroundColor: rowColors[getThreadNumber(entry.box)] || '#9ca3af',
                           },
                         ]}
                       />
@@ -667,6 +696,45 @@ export default function DesignDetail() {
           </View>
         </View>
       </Modal>
+
+      <View style={styles.bottomActionBar}>
+        {editMode ? (
+          <TouchableOpacity
+            style={[styles.bottomPrimaryButton, isDirty ? styles.bottomSaveButton : styles.bottomDoneButton]}
+            onPress={() => {
+              if (isDirty) {
+                handleSaveChanges();
+                return;
+              }
+
+              setEditMode(false);
+              setExpandedRow(null);
+            }}
+            disabled={isSaving}
+          >
+            <Ionicons name={isDirty ? 'save-outline' : 'checkmark-outline'} size={18} color="#fff" />
+            <Text style={styles.bottomPrimaryButtonText}>
+              {isDirty ? (isSaving ? 'Saving' : 'Save') : 'Done'}
+            </Text>
+          </TouchableOpacity>
+        ) : (
+          <TouchableOpacity
+            style={styles.bottomPrimaryButton}
+            onPress={() => setEditMode(true)}
+          >
+            <Ionicons name="create-outline" size={18} color="#fff" />
+            <Text style={styles.bottomPrimaryButtonText}>Edit</Text>
+          </TouchableOpacity>
+        )}
+
+        <TouchableOpacity
+          style={styles.bottomSecondaryButton}
+          onPress={() => setPreviewOpen(true)}
+        >
+          <Ionicons name="eye-outline" size={18} color="#4338ca" />
+          <Text style={styles.bottomSecondaryButtonText}>Preview</Text>
+        </TouchableOpacity>
+      </View>
     </>
   );
 }
@@ -680,53 +748,15 @@ const styles = StyleSheet.create({
   section: { backgroundColor: '#fff', marginTop: 16, padding: 16 },
   sectionTitle: { fontSize: 14, fontWeight: '600', color: '#6b7280', textTransform: 'uppercase', marginBottom: 8 },
   sectionHint: { fontSize: 12, color: '#6b7280', marginBottom: 10 },
-  stickyBar: { backgroundColor: '#fff', paddingHorizontal: 16, paddingTop: 10, paddingBottom: 10 },
-  statsRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
-  statsLine: { color: '#374151', fontSize: 14, fontWeight: '600' },
-  statsValue: { color: '#1e1b4b', fontSize: 18, fontWeight: '800' },
+  stickyBar: { backgroundColor: '#fff', paddingHorizontal: 16, paddingTop: 10, paddingBottom: 12 },
+  statusRow: { marginBottom: 10, alignItems: 'flex-start' },
+  summaryCard: { borderWidth: 1, borderColor: '#e5e7eb', borderRadius: 16, padding: 16, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', backgroundColor: '#fafafa' },
+  summaryStat: { flex: 1 },
+  summaryLabel: { fontSize: 13, color: '#6b7280' },
+  summaryValue: { marginTop: 6, fontSize: 22, fontWeight: '800', color: '#111827' },
+  summaryDivider: { width: 1, alignSelf: 'stretch', backgroundColor: '#e5e7eb', marginHorizontal: 16 },
   dirtyBadge: { backgroundColor: '#fef3c7', borderColor: '#f59e0b', borderWidth: 1, paddingHorizontal: 8, paddingVertical: 3, borderRadius: 999 },
   dirtyBadgeText: { color: '#92400e', fontWeight: '700', fontSize: 11 },
-  ctaSection: {
-    marginTop: 10,
-    borderTopWidth: 1,
-    borderTopColor: '#e5e7eb',
-    paddingTop: 10,
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    gap: 10,
-  },
-  primarySaveButton: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 8,
-    backgroundColor: '#2563eb',
-    paddingHorizontal: 14,
-    paddingVertical: 9,
-    borderRadius: 10,
-  },
-  primarySaveButtonText: { color: '#fff', fontWeight: '800' },
-  secondaryCtasRight: { flexDirection: 'row', alignItems: 'center', gap: 8 },
-  iconCtaButton: {
-    width: 36,
-    height: 36,
-    borderRadius: 9,
-    borderWidth: 1,
-    borderColor: '#d1d5db',
-    backgroundColor: '#f8fafc',
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  iconCtaButtonActive: {
-    width: 36,
-    height: 36,
-    borderRadius: 9,
-    borderWidth: 1,
-    borderColor: '#4338ca',
-    backgroundColor: '#4338ca',
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
   previewBox: { flex: 1, minHeight: 480, borderWidth: 1, borderColor: '#111827', borderRadius: 6, overflow: 'hidden' },
   legendRow: { flexDirection: 'row', gap: 16, paddingHorizontal: 10, paddingVertical: 8, borderBottomWidth: 1, borderBottomColor: '#d1d5db', backgroundColor: '#fff' },
   legendItem: { flexDirection: 'row', alignItems: 'center', gap: 6 },
@@ -741,28 +771,73 @@ const styles = StyleSheet.create({
   previewBandLabel: { color: '#6b7280', fontWeight: '700' },
   previewRow: { flex: 1, width: '100%' },
   previewEmptyText: { textAlign: 'center', color: '#6b7280', marginTop: 24, fontWeight: '600' },
-  rowCard: { borderWidth: 1, borderColor: '#e5e7eb', borderRadius: 10, padding: 12, marginBottom: 10, backgroundColor: '#fff' },
-  rowCardHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 6 },
-  rowHeaderMeta: { flexDirection: 'row', alignItems: 'center', gap: 8, flex: 1, justifyContent: 'flex-end', marginLeft: 8 },
-  metricChip: { backgroundColor: '#eef2ff', borderWidth: 1, borderColor: '#c7d2fe', paddingHorizontal: 8, paddingVertical: 3, borderRadius: 999 },
-  rowMiniStrong: { color: '#3730a3', fontSize: 12, fontWeight: '800', textAlign: 'center' },
+  rowCard: { borderWidth: 1, borderColor: '#e5e7eb', borderRadius: 12, padding: 12, marginBottom: 10, backgroundColor: '#fff' },
+  rowCardHeader: { flexDirection: 'row', alignItems: 'center', gap: 12 },
+  rowHeaderMain: { flex: 1 },
+  rowHeaderRight: { alignItems: 'flex-end', gap: 6, minWidth: 88 },
   rowIndex: { fontWeight: '700', color: '#111827' },
-  rowSubtotal: { fontWeight: '600', color: '#374151', fontSize: 12 },
-  rowActionsCompact: {
-    width: 32,
-    height: 32,
-    borderRadius: 8,
-    marginLeft: 8,
+  rowMetaLine: { marginTop: 4, fontSize: 13, color: '#4b5563' },
+  rowSubtotalLabel: { fontSize: 11, fontWeight: '600', color: '#9ca3af', textTransform: 'uppercase' },
+  rowSubtotalValue: { fontSize: 16, fontWeight: '800', color: '#111827' },
+  morePill: {
+    minWidth: 72,
+    flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
-    backgroundColor: '#eef2ff',
+    gap: 4,
     borderWidth: 1,
     borderColor: '#c7d2fe',
+    backgroundColor: '#eef2ff',
+    paddingHorizontal: 10,
+    paddingVertical: 5,
+    borderRadius: 999,
   },
-  rowFieldsGrid: { gap: 10 },
+  morePillText: { color: '#3730a3', fontSize: 12, fontWeight: '700' },
+  rowFieldsGrid: { gap: 10, marginTop: 12, paddingTop: 12, borderTopWidth: 1, borderTopColor: '#e5e7eb' },
   fieldBlock: {},
   fieldLabel: { fontSize: 12, color: '#6b7280', marginBottom: 4 },
   input: { borderWidth: 1, borderColor: '#9ca3af', borderRadius: 4, paddingVertical: 4, paddingHorizontal: 6, backgroundColor: '#fff' },
+  boxEditorCard: { borderWidth: 1, borderColor: '#d1d5db', borderRadius: 10, padding: 10, backgroundColor: '#f8fafc', gap: 10 },
+  boxEditorHint: { fontSize: 12, lineHeight: 18, color: '#6b7280' },
+  boxSection: { gap: 6 },
+  boxSectionLabel: { fontSize: 12, fontWeight: '700', color: '#374151' },
+  choiceRow: { flexDirection: 'row', flexWrap: 'wrap', gap: 8 },
+  choiceChip: {
+    minWidth: 58,
+    borderWidth: 1,
+    borderColor: '#cbd5e1',
+    borderRadius: 999,
+    paddingVertical: 8,
+    paddingHorizontal: 12,
+    backgroundColor: '#fff',
+    alignItems: 'center',
+  },
+  choiceChipActive: {
+    borderColor: '#4338ca',
+    backgroundColor: '#4338ca',
+  },
+  choiceChipText: { color: '#374151', fontWeight: '700' },
+  choiceChipTextActive: { color: '#fff' },
+  boxSelectionSummary: { fontSize: 12, fontWeight: '700', color: '#4338ca' },
+  inlineActionRow: { flexDirection: 'row', gap: 10, marginTop: 4 },
+  inlineActionButton: {
+    flex: 1,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 8,
+    borderWidth: 1,
+    borderColor: '#bbf7d0',
+    backgroundColor: '#f0fdf4',
+    borderRadius: 10,
+    paddingVertical: 11,
+    paddingHorizontal: 12,
+  },
+  inlineActionText: { fontSize: 14, fontWeight: '700', color: '#065f46' },
+  inlineDeleteButton: { borderColor: '#fecaca', backgroundColor: '#fef2f2' },
+  inlineDeleteText: { color: '#b91c1c' },
+  inlineActionDisabled: { borderColor: '#e5e7eb', backgroundColor: '#f9fafb' },
+  inlineDisabledText: { color: '#9ca3af' },
   repeatValue: { marginTop: 4, fontSize: 12, color: '#6b7280' },
   sheetBackdrop: { flex: 1, backgroundColor: 'rgba(0,0,0,0.35)', justifyContent: 'flex-end' },
   sheetOverlayTap: { flex: 1 },
@@ -774,4 +849,44 @@ const styles = StyleSheet.create({
   sheetActionText: { fontSize: 15, fontWeight: '600', color: '#111827' },
   sheetCloseBtn: { marginTop: 8, alignItems: 'center', paddingVertical: 12, borderRadius: 10, backgroundColor: '#f3f4f6' },
   sheetCloseText: { fontWeight: '600', color: '#374151' },
+  bottomActionBar: {
+    position: 'absolute',
+    left: 0,
+    right: 0,
+    bottom: 0,
+    paddingHorizontal: 16,
+    paddingTop: 12,
+    paddingBottom: 18,
+    flexDirection: 'row',
+    gap: 12,
+    backgroundColor: 'rgba(255,255,255,0.98)',
+    borderTopWidth: 1,
+    borderTopColor: '#e5e7eb',
+  },
+  bottomPrimaryButton: {
+    flex: 1,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 8,
+    paddingVertical: 14,
+    borderRadius: 14,
+    backgroundColor: '#2563eb',
+  },
+  bottomSaveButton: { backgroundColor: '#2563eb' },
+  bottomDoneButton: { backgroundColor: '#111827' },
+  bottomPrimaryButtonText: { color: '#fff', fontSize: 16, fontWeight: '800' },
+  bottomSecondaryButton: {
+    flex: 1,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 8,
+    paddingVertical: 14,
+    borderRadius: 14,
+    borderWidth: 1,
+    borderColor: '#c7d2fe',
+    backgroundColor: '#eef2ff',
+  },
+  bottomSecondaryButtonText: { color: '#3730a3', fontSize: 16, fontWeight: '800' },
 });

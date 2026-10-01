@@ -8,10 +8,18 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 
 const EDIT_KEY = 'editContext';
 
-export async function clearCart() {
+export async function replaceCart(items: Array<{ id: string; filename?: string; thumbnail?: string | null }>) {
   const auth = await getAuthHeader();
   const base = getApiUrl();
-  await fetch(`${base}/api/compile`, { method: 'POST', headers: { 'Content-Type': 'application/json', ...auth }, body: JSON.stringify({ items: [] }) });
+  await fetch(`${base}/api/compile`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', ...auth },
+    body: JSON.stringify({ items }),
+  });
+}
+
+export async function clearCart() {
+  await replaceCart([]);
 }
 
 export async function addToCart(item: { id: string; filename?: string; thumbnail?: string | null }) {

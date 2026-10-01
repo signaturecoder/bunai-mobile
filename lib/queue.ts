@@ -1,18 +1,65 @@
 type Listener = (count: number, items?: any[]) => void;
 
 let listeners: Listener[] = [];
+let queueItems: any[] = [];
+let queueVersion = 0;
+let hasQueueSnapshot = false;
+
+function notifyQueueListeners() {
+  listeners.forEach((listener) => {
+    try {
+      listener(queueItems.length, queueItems);
+    } catch (e) {
+      // ignore
+    }
+  });
+}
 
 export function subscribe(listener: Listener) {
   listeners.push(listener);
+
+  if (hasQueueSnapshot) {
+    try {
+      listener(queueItems.length, queueItems);
+    } catch (e) {
+      // ignore
+    }
+  }
+
   return () => {
     listeners = listeners.filter((l) => l !== listener);
   };
 }
 
+export function setQueueState(items: any[]) {
+  queueItems = Array.isArray(items) ? items : [];
+  hasQueueSnapshot = true;
+  queueVersion += 1;
+  notifyQueueListeners();
+}
+
+export function getQueueState() {
+  return queueItems;
+}
+
+export function hasQueueState() {
+  return hasQueueSnapshot;
+}
+
+export function getQueueVersion() {
+  return queueVersion;
+}
+
 export function emit(count: number, items?: any[]) {
-  listeners.forEach((l) => {
+  if (items) {
+    setQueueState(items);
+    return;
+  }
+
+  queueVersion += 1;
+  listeners.forEach((listener) => {
     try {
-      l(count, items);
+      listener(count, queueItems);
     } catch (e) {
       // ignore
     }
