@@ -18,6 +18,8 @@ export interface User {
 export interface AuthResponse {
   token: string;
   refreshToken?: string;
+  // ISO string when server provides refresh expiry
+  refreshExpiresAt?: string;
   user: User;
   expiresAt: string;
 }

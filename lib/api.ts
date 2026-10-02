@@ -4,7 +4,7 @@
  * All requests to your existing /api/* endpoints
  */
 
-import { getAuthHeader, storeAuth, clearAuth, getRefreshToken, storeAuth as storeAuthData, getTokenInfo } from './auth';
+import { getAuthHeader, storeAuth, clearAuth, getRefreshToken, storeAuth as storeAuthData, getTokenInfo, getRefreshInfo } from './auth';
 import { emitAuthExpired } from './authEvents';
 import { router } from 'expo-router';
 import type { AuthResponse, ModFile, ModFileDetail } from './types';
@@ -21,6 +21,22 @@ function delay(ms: number) {
 }
 
 async function performRefreshWithRetries(): Promise<boolean> {
+  // Before attempting refresh, check whether the refresh token has expired
+  try {
+    const refreshInfo = await getRefreshInfo();
+    if (!refreshInfo.refreshToken) return false;
+    if (refreshInfo.refreshExpiresAt && Date.now() > refreshInfo.refreshExpiresAt) {
+      // Refresh token expired — clear auth and signal expired
+      try {
+        await clearAuth();
+      } catch (e) {}
+      try { emitAuthExpired(); } catch (e) {}
+      return false;
+    }
+  } catch (e) {
+    // fallback to reading token directly
+  }
+
   const refreshToken = await getRefreshToken();
   if (!refreshToken) return false;
 

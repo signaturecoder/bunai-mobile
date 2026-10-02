@@ -49,8 +49,21 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   useEffect(() => {
     let mounted = true;
     const init = async () => {
-      await refreshUser();
-      if (mounted) setIsLoading(false);
+      try {
+        setIsRefreshing(true);
+        // Try to silently refresh tokens on startup so short-lived access tokens
+        // don't log the user out when the app is reopened after being swiped.
+        await ensureRefreshed();
+      } catch (e) {
+        // ignore - ensureRefreshed clears auth if refresh permanently fails
+      } finally {
+        try {
+          await refreshUser();
+        } finally {
+          if (mounted) setIsLoading(false);
+          setIsRefreshing(false);
+        }
+      }
     };
     init();
 

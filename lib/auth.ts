@@ -10,6 +10,7 @@ const TOKEN_KEY = 'bunai_auth_token';
 const USER_KEY = 'bunai_user';
 const EXPIRES_KEY = 'bunai_token_expires';
 const REFRESH_KEY = 'bunai_refresh_token';
+const REFRESH_EXPIRES_KEY = 'bunai_refresh_expires';
 
 /**
  * Store authentication data securely
@@ -35,6 +36,14 @@ export async function storeAuth(authData: AuthResponse): Promise<void> {
   await SecureStore.setItemAsync(TOKEN_KEY, authData.token);
   if (authData.refreshToken) {
     await SecureStore.setItemAsync(REFRESH_KEY, authData.refreshToken);
+    // If server provided refresh expiry, store it as ISO string
+    // authData may include `refreshExpiresAt` when coming from /api/auth/refresh
+    // or /api/auth/login
+    // @ts-ignore
+    if (authData.refreshExpiresAt && typeof authData.refreshExpiresAt === 'string') {
+      // store the ISO string directly
+      await SecureStore.setItemAsync(REFRESH_EXPIRES_KEY, authData.refreshExpiresAt);
+    }
   }
   await SecureStore.setItemAsync(USER_KEY, JSON.stringify(authData.user));
   await SecureStore.setItemAsync(EXPIRES_KEY, authData.expiresAt);
@@ -141,6 +150,11 @@ export async function clearAuth(): Promise<void> {
   } catch (error) {
     console.error(`Error clearing ${REFRESH_KEY}:`, error);
   }
+  try {
+    await SecureStore.deleteItemAsync(REFRESH_EXPIRES_KEY);
+  } catch (error) {
+    console.error(`Error clearing ${REFRESH_EXPIRES_KEY}:`, error);
+  }
 }
 
 export async function getRefreshToken(): Promise<string | null> {
@@ -149,6 +163,30 @@ export async function getRefreshToken(): Promise<string | null> {
     return t;
   } catch (e) {
     return null;
+  }
+}
+
+/**
+ * Returns refresh token and expiry timestamp (ms) if available.
+ */
+export async function getRefreshInfo(): Promise<{ refreshToken: string | null; refreshExpiresAt: number | null }> {
+  try {
+    const token = await SecureStore.getItemAsync(REFRESH_KEY);
+    const expires = await SecureStore.getItemAsync(REFRESH_EXPIRES_KEY);
+
+    let expiresMs: number | null = null;
+    if (expires) {
+      try {
+        const d = new Date(expires);
+        if (!isNaN(d.getTime())) expiresMs = d.getTime();
+      } catch (e) {
+        // ignore
+      }
+    }
+
+    return { refreshToken: token || null, refreshExpiresAt: expiresMs };
+  } catch (e) {
+    return { refreshToken: null, refreshExpiresAt: null };
   }
 }
 
