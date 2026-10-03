@@ -2,7 +2,7 @@ import { Tabs, useRouter } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import { useEffect, useRef, useState } from 'react';
 import AsyncStorage from '@react-native-async-storage/async-storage';
-import { Modal, PanResponder, StyleSheet, Text, TouchableOpacity, View, Alert } from 'react-native';
+import { Modal, PanResponder, StyleSheet, Text, TouchableOpacity, View, Alert, Animated } from 'react-native';
 import { getAuthHeader } from '@/lib/auth';
 import { getApiUrl } from '@/lib/api';
 import { subscribe, computeCount, hasQueueState, getQueueState, setQueueState, getQueueVersion } from '@/lib/queue';
@@ -10,7 +10,6 @@ import { useAuth } from '@/contexts/AuthContext';
 
 export default function TabsLayout() {
   const [badgeCount, setBadgeCount] = useState(0);
-  const [menuOpen, setMenuOpen] = useState(false);
   const router = useRouter();
   const { sessionExpired, acknowledgeSessionExpired } = useAuth();
 
@@ -20,11 +19,40 @@ export default function TabsLayout() {
       onMoveShouldSetPanResponder: (_, gestureState) => Math.abs(gestureState.dx) > 10 && Math.abs(gestureState.dy) < 20,
       onPanResponderRelease: (_, gestureState) => {
         if (gestureState.dx < -50 && Math.abs(gestureState.dy) < 50) {
-          setMenuOpen(false);
+          closeDrawer();
         }
       },
     })
   ).current;
+
+  const drawerWidth = 260;
+  const drawerAnim = useRef(new Animated.Value(-drawerWidth)).current;
+  const [drawerVisible, setDrawerVisible] = useState(false);
+  const isDrawerClosing = useRef(false);
+
+  function openDrawer() {
+    isDrawerClosing.current = false;
+    drawerAnim.stopAnimation();
+    setDrawerVisible(true);
+    drawerAnim.setValue(-drawerWidth);
+    Animated.timing(drawerAnim, { toValue: 0, duration: 220, useNativeDriver: true }).start();
+  }
+
+  function closeDrawer() {
+    if (isDrawerClosing.current) {
+      return;
+    }
+
+    isDrawerClosing.current = true;
+    drawerAnim.stopAnimation();
+    Animated.timing(drawerAnim, { toValue: -drawerWidth, duration: 180, useNativeDriver: true }).start(({ finished }) => {
+      if (finished && isDrawerClosing.current) {
+        setDrawerVisible(false);
+      }
+
+      isDrawerClosing.current = false;
+    });
+  }
 
   useEffect(() => {
     let mounted = true;
@@ -113,7 +141,7 @@ export default function TabsLayout() {
             fontWeight: 'bold',
           },
           headerLeft: () => (
-            <TouchableOpacity onPress={() => setMenuOpen(true)} style={{ paddingLeft: 12 }}>
+            <TouchableOpacity onPress={openDrawer} style={{ paddingLeft: 12 }}>
               <Ionicons name="menu" size={24} color="#fff" />
             </TouchableOpacity>
           ),
@@ -151,21 +179,21 @@ export default function TabsLayout() {
         />
       </Tabs>
 
-      <Modal visible={menuOpen} animationType="slide" transparent={true} onRequestClose={() => setMenuOpen(false)}>
+      <Modal visible={drawerVisible} animationType="none" transparent={true} onRequestClose={closeDrawer}>
         <View style={styles.menuOverlay} {...panResponder.panHandlers}>
-          <View style={styles.menuPane}>
+          <Animated.View style={[styles.menuPane, { transform: [{ translateX: drawerAnim }] }] }>
             <Text style={styles.menuTitle}>Menu</Text>
-            <TouchableOpacity style={styles.menuItem} onPress={() => { setMenuOpen(false); router.replace('/(app)/settings'); }}>
+            <TouchableOpacity style={styles.menuItem} onPress={() => { closeDrawer(); router.push('/(app)/settings'); }}>
               <Text style={styles.menuItemText}>Settings</Text>
             </TouchableOpacity>
-            <TouchableOpacity style={styles.menuItem} onPress={() => { setMenuOpen(false); router.replace('/(app)/diagnostics'); }}>
+            <TouchableOpacity style={styles.menuItem} onPress={() => { closeDrawer(); router.push('/(app)/diagnostics'); }}>
               <Text style={styles.menuItemText}>Diagnostics</Text>
             </TouchableOpacity>
-            <TouchableOpacity style={[styles.menuItem, { marginTop: 12 }]} onPress={() => setMenuOpen(false)}>
+            <TouchableOpacity style={[styles.menuItem, { marginTop: 12 }]} onPress={() => closeDrawer()}>
               <Text style={[styles.menuItemText, { color: '#6b7280' }]}>Close</Text>
             </TouchableOpacity>
-          </View>
-          <TouchableOpacity style={styles.overlayTapArea} activeOpacity={1} onPress={() => setMenuOpen(false)} />
+          </Animated.View>
+          <TouchableOpacity style={styles.overlayTapArea} activeOpacity={1} onPress={() => closeDrawer()} />
         </View>
       </Modal>
       <Modal visible={sessionExpired} animationType="fade" transparent onRequestClose={() => acknowledgeSessionExpired()}>

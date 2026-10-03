@@ -14,9 +14,9 @@ import {
   Platform,
 } from "react-native";
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { useLocalSearchParams, Stack } from "expo-router";
+import { useLocalSearchParams, Stack, useRouter } from "expo-router";
 import { Ionicons } from "@expo/vector-icons";
-import { getDesign, updateDesign } from "@/lib/api";
+import { createDesign, getDesign, updateDesign } from "@/lib/api";
 import { generateDB0File } from "@/lib/db0Generator";
 
 type Entry = {
@@ -312,6 +312,7 @@ const RowItem = memo(
 
 export default function DesignDetail() {
   const { id } = useLocalSearchParams<{ id: string }>();
+  const router = useRouter();
   const [design, setDesign] = useState<any | null>(null);
   const [entries, setEntries] = useState<Entry[]>([]);
   const [isLoading, setIsLoading] = useState(true);
@@ -329,6 +330,9 @@ export default function DesignDetail() {
   const [actionOpen, setActionOpen] = useState(false);
   const [editMode, setEditMode] = useState(false);
   const [expandedRow, setExpandedRow] = useState<number | null>(null);
+  const [saveChoiceOpen, setSaveChoiceOpen] = useState(false);
+  const [saveAsName, setSaveAsName] = useState("");
+  const [saveChoiceError, setSaveChoiceError] = useState<string | null>(null);
   const listRef = useRef<FlatList<Entry> | null>(null);
   const insets = useSafeAreaInsets();
 
@@ -478,54 +482,104 @@ export default function DesignDetail() {
     load();
   }, [id]);
 
-  const handleSaveChanges = async () => {
+  const buildSavePayload = async () => {
+    if (!design) {
+      throw new Error("Design not found");
+    }
+
+    const currentFilename = (design.filename || "UNTITLED.DB0").toUpperCase();
+
+    const generated = await generateDB0File(
+      entries.map((e) => ({
+        picks: Number(e.picks) || 0,
+        box: Number(e.box) || 0,
+        firstRepeatCount: Number(e.firstRepeatCount) || 0,
+        secondRepeatCount: Number(e.secondRepeatCount) || 0,
+      })),
+      currentFilename,
+      totalPicks,
+    );
+
+    const bytes = new Uint8Array(generated.buffer);
+    let binary = "";
+    for (let i = 0; i < bytes.length; i++) {
+      binary += String.fromCharCode(bytes[i]);
+    }
+
+    return {
+      filename: generated.filename,
+      description: design.description ?? null,
+      tags: design.tags || [],
+      fileData: btoa(binary),
+      metadata: generated.metadata,
+    };
+  };
+
+  const handleUpdateExisting = async () => {
     if (!id || !design) return;
     try {
       setIsSaving(true);
-      const currentFilename = (design.filename || "UNTITLED.DB0").toUpperCase();
+      const payload = await buildSavePayload();
 
-      const generated = await generateDB0File(
-        entries.map((e) => ({
-          picks: Number(e.picks) || 0,
-          box: Number(e.box) || 0,
-          firstRepeatCount: Number(e.firstRepeatCount) || 0,
-          secondRepeatCount: Number(e.secondRepeatCount) || 0,
-        })),
-        currentFilename,
-        totalPicks,
-      );
-
-      const bytes = new Uint8Array(generated.buffer);
-      let binary = "";
-      for (let i = 0; i < bytes.length; i++) {
-        binary += String.fromCharCode(bytes[i]);
-      }
-      const base64Data = btoa(binary);
-
-      await updateDesign(id, {
-        filename: generated.filename,
-        description: design.description ?? null,
-        tags: design.tags || [],
-        fileData: base64Data,
-        metadata: generated.metadata,
-      });
+      await updateDesign(id, payload);
 
       setDesign((prev: any) =>
         prev
           ? {
               ...prev,
-              filename: generated.filename,
-              metadata: generated.metadata,
+              filename: payload.filename,
+              metadata: payload.metadata,
             }
           : prev,
       );
       setInitialSignature(toSignature(entries));
+      setSaveChoiceOpen(false);
+      setSaveChoiceError(null);
       Alert.alert("Saved", "Design updated successfully.");
     } catch (err: any) {
-      Alert.alert("Save failed", err?.message || "Failed to save design");
+      setSaveChoiceError(err?.message || "Failed to update design");
     } finally {
       setIsSaving(false);
     }
+  };
+
+  const handleCreateNew = async () => {
+    if (!design) return;
+
+    const trimmedName = saveAsName.trim().toUpperCase();
+    if (!trimmedName) {
+      setSaveChoiceError("Please enter a filename for the new design.");
+      return;
+    }
+
+    try {
+      setIsSaving(true);
+      setSaveChoiceError(null);
+      const payload = await buildSavePayload();
+      const created = await createDesign({
+        ...payload,
+        filename: trimmedName,
+      });
+
+      setInitialSignature(toSignature(entries));
+      setSaveChoiceOpen(false);
+      setSaveAsName("");
+      const newId = created?.design?.id;
+      if (newId) {
+        router.replace(`/(app)/design/${newId}`);
+      }
+      Alert.alert("Saved", "New design created successfully.");
+    } catch (err: any) {
+      setSaveChoiceError(err?.message || "Failed to create new design");
+    } finally {
+      setIsSaving(false);
+    }
+  };
+
+  const openSaveChoice = () => {
+    setSaveAsName((design?.filename || "UNTITLED.DB0").toUpperCase());
+    setSaveChoiceError(null);
+    setSaveChoiceOpen(true);
   };
 
   const totalPicks = entries.length
@@ -906,6 +960,86 @@ export default function DesignDetail() {
           </View>
         </View>
       </Modal>
+      <Modal
+        visible={saveChoiceOpen}
+        transparent
+        animationType="fade"
+        onRequestClose={() => {
+          if (!isSaving) {
+            setSaveChoiceOpen(false);
+            setSaveChoiceError(null);
+          }
+        }}
+      >
+        <View style={styles.modalBackdrop}>
+          <View style={styles.saveChoiceModal}>
+            <Text style={styles.saveChoiceTitle}>Save Design</Text>
+            <Text style={styles.saveChoiceHint}>
+              Choose whether to update this design or create a new copy.
+            </Text>
+
+            <TouchableOpacity
+              style={styles.saveChoiceOption}
+              onPress={handleUpdateExisting}
+              disabled={isSaving}
+            >
+              <View style={styles.saveChoiceOptionIconWrap}>
+                <Ionicons name="save-outline" size={18} color="#4338ca" />
+              </View>
+              <View style={styles.saveChoiceOptionContent}>
+                <Text style={styles.saveChoiceOptionTitle}>Update Existing</Text>
+                <Text style={styles.saveChoiceOptionText}>{design?.filename}</Text>
+              </View>
+            </TouchableOpacity>
+
+            <View style={styles.saveChoiceDivider} />
+
+            <Text style={styles.saveChoiceLabel}>Create New Design</Text>
+            <TextInput
+              value={saveAsName}
+              onChangeText={(value) => {
+                setSaveAsName(value);
+                setSaveChoiceError(null);
+              }}
+              style={styles.saveChoiceInput}
+              autoCapitalize="characters"
+              autoCorrect={false}
+              editable={!isSaving}
+            />
+            <Text style={styles.saveChoiceMicrocopy}>
+              Use a different filename to save this edit as a new design.
+            </Text>
+
+            {saveChoiceError ? (
+              <Text style={styles.saveChoiceError}>{saveChoiceError}</Text>
+            ) : null}
+
+            <View style={styles.saveChoiceActions}>
+              <TouchableOpacity
+                style={styles.saveChoiceCancelButton}
+                onPress={() => {
+                  setSaveChoiceOpen(false);
+                  setSaveChoiceError(null);
+                }}
+                disabled={isSaving}
+              >
+                <Text style={styles.saveChoiceCancelText}>Cancel</Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                style={styles.saveChoiceConfirmButton}
+                onPress={handleCreateNew}
+                disabled={isSaving}
+              >
+                {isSaving ? (
+                  <ActivityIndicator color="#fff" />
+                ) : (
+                  <Text style={styles.saveChoiceConfirmText}>Create New</Text>
+                )}
+              </TouchableOpacity>
+            </View>
+          </View>
+        </View>
+      </Modal>
 
       <View style={[styles.bottomActionBar, { paddingBottom: Math.max(12, insets.bottom) }]}>
         {editMode ? (
@@ -916,7 +1050,7 @@ export default function DesignDetail() {
             ]}
             onPress={() => {
               if (isDirty) {
-                handleSaveChanges();
+                openSaveChoice();
                 return;
               }
 
@@ -1220,6 +1354,121 @@ const styles = StyleSheet.create({
     backgroundColor: "#f3f4f6",
   },
   sheetCloseText: { fontWeight: "600", color: "#374151" },
+  modalBackdrop: {
+    flex: 1,
+    justifyContent: "center",
+    alignItems: "center",
+    backgroundColor: "rgba(17, 24, 39, 0.45)",
+    paddingHorizontal: 20,
+  },
+  saveChoiceModal: {
+    width: "100%",
+    maxWidth: 420,
+    backgroundColor: "#fff",
+    borderRadius: 20,
+    padding: 20,
+  },
+  saveChoiceTitle: {
+    fontSize: 20,
+    fontWeight: "800",
+    color: "#111827",
+  },
+  saveChoiceHint: {
+    marginTop: 6,
+    fontSize: 14,
+    lineHeight: 20,
+    color: "#6b7280",
+  },
+  saveChoiceOption: {
+    marginTop: 18,
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 12,
+    borderWidth: 1,
+    borderColor: "#e5e7eb",
+    borderRadius: 14,
+    padding: 14,
+    backgroundColor: "#f9fafb",
+  },
+  saveChoiceOptionIconWrap: {
+    width: 36,
+    height: 36,
+    borderRadius: 18,
+    backgroundColor: "#eef2ff",
+    justifyContent: "center",
+    alignItems: "center",
+  },
+  saveChoiceOptionContent: {
+    flex: 1,
+  },
+  saveChoiceOptionTitle: {
+    fontSize: 15,
+    fontWeight: "700",
+    color: "#111827",
+  },
+  saveChoiceOptionText: {
+    marginTop: 2,
+    fontSize: 13,
+    color: "#6b7280",
+  },
+  saveChoiceDivider: {
+    height: 1,
+    backgroundColor: "#e5e7eb",
+    marginVertical: 18,
+  },
+  saveChoiceLabel: {
+    fontSize: 14,
+    fontWeight: "700",
+    color: "#111827",
+    marginBottom: 8,
+  },
+  saveChoiceInput: {
+    borderWidth: 1,
+    borderColor: "#d1d5db",
+    borderRadius: 12,
+    paddingHorizontal: 14,
+    paddingVertical: 12,
+    fontSize: 15,
+    color: "#111827",
+    backgroundColor: "#fff",
+  },
+  saveChoiceMicrocopy: {
+    marginTop: 8,
+    fontSize: 12,
+    color: "#6b7280",
+    lineHeight: 18,
+  },
+  saveChoiceError: {
+    marginTop: 10,
+    color: "#dc2626",
+    fontSize: 13,
+  },
+  saveChoiceActions: {
+    marginTop: 18,
+    flexDirection: "row",
+    justifyContent: "flex-end",
+    gap: 12,
+  },
+  saveChoiceCancelButton: {
+    paddingHorizontal: 14,
+    paddingVertical: 10,
+  },
+  saveChoiceCancelText: {
+    color: "#6b7280",
+    fontWeight: "700",
+  },
+  saveChoiceConfirmButton: {
+    backgroundColor: "#111827",
+    borderRadius: 12,
+    paddingHorizontal: 16,
+    paddingVertical: 10,
+    minWidth: 110,
+    alignItems: "center",
+  },
+  saveChoiceConfirmText: {
+    color: "#fff",
+    fontWeight: "700",
+  },
   bottomActionBar: {
     position: "absolute",
     left: 0,

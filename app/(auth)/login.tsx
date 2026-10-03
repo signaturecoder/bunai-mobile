@@ -10,6 +10,7 @@ import {
   ActivityIndicator,
   Alert,
 } from 'react-native';
+import { Ionicons } from '@expo/vector-icons';
 import { useRouter } from 'expo-router';
 import { login } from '@/lib/api';
 import { useAuth } from '@/contexts/AuthContext';
@@ -17,6 +18,7 @@ import { useAuth } from '@/contexts/AuthContext';
 export default function LoginScreen() {
   const [phone, setPhone] = useState('');
   const [password, setPassword] = useState('');
+  const [showPassword, setShowPassword] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
   const router = useRouter();
   const { refreshUser } = useAuth();
@@ -71,17 +73,33 @@ export default function LoginScreen() {
           />
 
           <Text style={styles.label}>Password</Text>
-          <TextInput
-            style={styles.input}
-            placeholder="Enter your password"
-            placeholderTextColor="#9ca3af"
-            value={password}
-            onChangeText={setPassword}
-            secureTextEntry
-            autoCapitalize="none"
-            autoCorrect={false}
-            editable={!isLoading}
-          />
+          <View style={styles.passwordField}>
+            <TextInput
+              style={styles.passwordInput}
+              placeholder="Enter your password"
+              placeholderTextColor="#9ca3af"
+              value={password}
+              onChangeText={setPassword}
+              secureTextEntry={!showPassword}
+              autoCapitalize="none"
+              autoCorrect={false}
+              editable={!isLoading}
+            />
+            <TouchableOpacity
+              style={styles.passwordToggle}
+              onPress={() => setShowPassword((current) => !current)}
+              disabled={isLoading}
+              accessibilityRole="button"
+              accessibilityLabel={showPassword ? 'Hide password' : 'Show password'}
+              hitSlop={{ top: 8, right: 8, bottom: 8, left: 8 }}
+            >
+              <Ionicons
+                name={showPassword ? 'eye-off-outline' : 'eye-outline'}
+                size={20}
+                color="#6b7280"
+              />
+            </TouchableOpacity>
+          </View>
 
           <TouchableOpacity
             style={[styles.button, isLoading && styles.buttonDisabled]}
@@ -159,6 +177,30 @@ const styles = StyleSheet.create({
     fontSize: 16,
     color: '#111827',
     marginBottom: 16,
+  },
+  passwordField: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#f9fafb',
+    borderWidth: 1,
+    borderColor: '#e5e7eb',
+    borderRadius: 12,
+    marginBottom: 16,
+  },
+  passwordInput: {
+    flex: 1,
+    paddingLeft: 16,
+    paddingRight: 12,
+    paddingVertical: 14,
+    fontSize: 16,
+    color: '#111827',
+  },
+  passwordToggle: {
+    justifyContent: 'center',
+    alignItems: 'center',
+    paddingLeft: 8,
+    paddingRight: 16,
+    paddingVertical: 14,
   },
   button: {
     backgroundColor: '#7c3aed',

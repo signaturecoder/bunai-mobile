@@ -50,17 +50,13 @@ export default function DesignsScreen() {
   const [isCreating, setIsCreating] = useState(false);
   const [isNameModalVisible, setIsNameModalVisible] = useState(false);
   const [newFilename, setNewFilename] = useState('UNTITLED.DB0');
+
   useLayoutEffect(() => {
     const iconColor = '#ffffff';
     navigation.setOptions?.({
       headerStyle: { backgroundColor: '#7c3aed' },
       headerTintColor: iconColor,
       headerTitleStyle: { color: iconColor },
-      headerLeft: () => (
-        <TouchableOpacity style={{ padding: 8 }} onPress={() => navigation.toggleDrawer && navigation.toggleDrawer()}>
-          <Ionicons name="menu" size={22} color={iconColor} />
-        </TouchableOpacity>
-      ),
       headerRight: () => (
         <TouchableOpacity style={{ padding: 8 }} onPress={openCreateModal} accessibilityLabel="Create new design">
           <Ionicons name="add" size={22} color={iconColor} />
