@@ -4,7 +4,7 @@
  * All requests to your existing /api/* endpoints
  */
 
-import { getAuthHeader, storeAuth, clearAuth, getRefreshToken, storeAuth as storeAuthData, getTokenInfo, getRefreshInfo } from './auth';
+import { getAuthHeader, storeAuth, clearAuth, getRefreshToken, getTokenInfo, getRefreshInfo } from './auth';
 import { emitAuthExpired } from './authEvents';
 import { router } from 'expo-router';
 import type { AuthResponse, ModFile, ModFileDetail } from './types';
@@ -24,6 +24,7 @@ async function performRefreshWithRetries(): Promise<boolean> {
   // Before attempting refresh, check whether the refresh token has expired
   try {
     const refreshInfo = await getRefreshInfo();
+    console.warn('Refresh info:', refreshInfo);
     if (!refreshInfo.refreshToken) return false;
     if (refreshInfo.refreshExpiresAt && Date.now() > refreshInfo.refreshExpiresAt) {
       // Refresh token expired — clear auth and signal expired
@@ -37,32 +38,66 @@ async function performRefreshWithRetries(): Promise<boolean> {
     // fallback to reading token directly
   }
 
-  const refreshToken = await getRefreshToken();
+  let refreshToken = await getRefreshToken();
   if (!refreshToken) return false;
 
   const attempts = [500, 1000, 2000];
   for (let i = 0; i < attempts.length; i++) {
+    // Re-read the currently stored refresh token to handle races
     try {
+      const latest = await getRefreshToken();
+      if (!latest) {
+        console.debug('[auth] no refresh token in storage before attempt, aborting');
+        return false;
+      }
+      // use the latest token for this attempt
+      refreshToken = latest;
+    } catch (e) {
+      // ignore and use existing value
+    }
+    try {
+      console.debug(`[auth] refresh attempt ${i + 1} -> POST ${API_BASE_URL}/api/auth/refresh`);
       const r = await fetch(`${API_BASE_URL}/api/auth/refresh`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ refreshToken }),
       });
-
+      console.debug(`[auth] refresh response status: ${r.status}`);
       if (r.ok) {
         const json = await r.json();
+        console.debug('[auth] refresh response body:', json);
         const newAuth = {
           token: json.accessToken || json.token,
           refreshToken: json.refreshToken || refreshToken,
-          user: json.user || undefined,
+          user: json.user,
           expiresAt: json.expiresAt,
+          refreshExpiresAt: json.refreshExpiresAt || undefined,
         };
-        await storeAuthData(newAuth as any);
+        await storeAuth(newAuth);
         return true;
       }
 
-      // 4xx likely means refresh token invalid/expired — stop retrying
+      // Log non-ok responses for debugging
+      try {
+        const body = await r.text();
+        console.debug('[auth] refresh failed body:', body);
+      } catch (e) {}
+
+      // 4xx likely means refresh token invalid/expired — but first check
+      // whether another concurrent refresh already rotated the token.
       if (r.status >= 400 && r.status < 500) {
+        try {
+          const currentStored = await getRefreshToken();
+          if (currentStored && currentStored !== refreshToken) {
+            // Another refresh call rotated the token and stored a new one.
+            // Treat this as success so we don't log the user out.
+            console.debug('[auth] detected rotated refresh token in storage; treating refresh as successful');
+            return true;
+          }
+        } catch (e) {
+          // ignore
+        }
+
         try {
           await clearAuth();
         } catch (e) {

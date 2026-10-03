@@ -240,7 +240,7 @@ export default function CompileScreen() {
           headerRight: () => (
             items.length > 0 ? (
               <TouchableOpacity style={styles.headerGhostButton} onPress={handleClearAll}>
-                <Ionicons name="trash-outline" size={18} color="#b91c1c" />
+                <Ionicons name="trash-outline" size={18} color="#fff" />
                 <Text style={styles.headerGhostButtonText}>Clear</Text>
               </TouchableOpacity>
             ) : null
@@ -407,7 +407,7 @@ const styles = StyleSheet.create({
   title: { fontSize: 22, fontWeight: '800', color: '#111827' },
   headerHint: { marginTop: 4, fontSize: 13, color: '#6b7280' },
   headerGhostButton: { flexDirection: 'row', alignItems: 'center', gap: 6, paddingHorizontal: 10, paddingVertical: 6 },
-  headerGhostButtonText: { color: '#b91c1c', fontWeight: '700', fontSize: 14 },
+  headerGhostButtonText: { color: '#fff', fontWeight: '700', fontSize: 14 },
   summaryTrigger: { flexDirection: 'row', alignItems: 'center', gap: 6, borderWidth: 1, borderColor: '#c7d2fe', backgroundColor: '#eef2ff', paddingHorizontal: 12, paddingVertical: 8, borderRadius: 999 },
   summaryTriggerText: { color: '#3730a3', fontWeight: '700' },
   listContent: { paddingBottom: 110 },

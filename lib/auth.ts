@@ -12,19 +12,16 @@ const EXPIRES_KEY = 'bunai_token_expires';
 const REFRESH_KEY = 'bunai_refresh_token';
 const REFRESH_EXPIRES_KEY = 'bunai_refresh_expires';
 
+type StoredAuthData = Pick<AuthResponse, 'token' | 'expiresAt'> & Partial<Pick<AuthResponse, 'refreshToken' | 'refreshExpiresAt' | 'user'>>;
+
 /**
  * Store authentication data securely
  * Only strings are stored in SecureStore
  */
-export async function storeAuth(authData: AuthResponse): Promise<void> {
+export async function storeAuth(authData: StoredAuthData): Promise<void> {
   // Validate token exists and is a string
   if (!authData.token || typeof authData.token !== 'string') {
     throw new Error('Invalid token: must be a non-empty string');
-  }
-
-  // Validate user object exists
-  if (!authData.user || typeof authData.user !== 'object') {
-    throw new Error('Invalid user: must be an object');
   }
 
   // Validate expiresAt is a string
@@ -32,10 +29,15 @@ export async function storeAuth(authData: AuthResponse): Promise<void> {
     throw new Error('Invalid expiresAt: must be a string');
   }
 
+  if (authData.user !== undefined && typeof authData.user !== 'object') {
+    throw new Error('Invalid user: must be an object when provided');
+  }
+
   // Store as strings only
   await SecureStore.setItemAsync(TOKEN_KEY, authData.token);
   if (authData.refreshToken) {
     await SecureStore.setItemAsync(REFRESH_KEY, authData.refreshToken);
+    console.debug('[auth] storeAuth: stored refreshToken (length)', authData.refreshToken?.length || 0);
     // If server provided refresh expiry, store it as ISO string
     // authData may include `refreshExpiresAt` when coming from /api/auth/refresh
     // or /api/auth/login
@@ -43,9 +45,19 @@ export async function storeAuth(authData: AuthResponse): Promise<void> {
     if (authData.refreshExpiresAt && typeof authData.refreshExpiresAt === 'string') {
       // store the ISO string directly
       await SecureStore.setItemAsync(REFRESH_EXPIRES_KEY, authData.refreshExpiresAt);
+      console.debug('[auth] storeAuth: stored refreshExpiresAt', authData.refreshExpiresAt);
     }
   }
-  await SecureStore.setItemAsync(USER_KEY, JSON.stringify(authData.user));
+
+  if (authData.user) {
+    await SecureStore.setItemAsync(USER_KEY, JSON.stringify(authData.user));
+  } else {
+    const existingUser = await SecureStore.getItemAsync(USER_KEY);
+    if (!existingUser) {
+      throw new Error('Missing user data: cannot store auth without an existing user');
+    }
+  }
+
   await SecureStore.setItemAsync(EXPIRES_KEY, authData.expiresAt);
 }
 
@@ -147,11 +159,13 @@ export async function clearAuth(): Promise<void> {
   }
   try {
     await SecureStore.deleteItemAsync(REFRESH_KEY);
+    console.debug('[auth] clearAuth: deleted refresh token from SecureStore');
   } catch (error) {
     console.error(`Error clearing ${REFRESH_KEY}:`, error);
   }
   try {
     await SecureStore.deleteItemAsync(REFRESH_EXPIRES_KEY);
+    console.debug('[auth] clearAuth: deleted refreshExpiresAt from SecureStore');
   } catch (error) {
     console.error(`Error clearing ${REFRESH_EXPIRES_KEY}:`, error);
   }
@@ -160,6 +174,7 @@ export async function clearAuth(): Promise<void> {
 export async function getRefreshToken(): Promise<string | null> {
   try {
     const t = await SecureStore.getItemAsync(REFRESH_KEY);
+    console.debug('[auth] getRefreshToken ->', !!t);
     return t;
   } catch (e) {
     return null;
@@ -173,6 +188,8 @@ export async function getRefreshInfo(): Promise<{ refreshToken: string | null; r
   try {
     const token = await SecureStore.getItemAsync(REFRESH_KEY);
     const expires = await SecureStore.getItemAsync(REFRESH_EXPIRES_KEY);
+
+    console.debug('[auth] getRefreshInfo read ->', { hasToken: !!token, refreshExpiresAt: expires });
 
     let expiresMs: number | null = null;
     if (expires) {

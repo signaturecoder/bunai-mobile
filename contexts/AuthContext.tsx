@@ -53,7 +53,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         setIsRefreshing(true);
         // Try to silently refresh tokens on startup so short-lived access tokens
         // don't log the user out when the app is reopened after being swiped.
-        await ensureRefreshed();
+        console.debug('[auth] init: ensuring refreshed on app start');
+        const ok = await ensureRefreshed();
+        console.debug('[auth] init: ensureRefreshed ->', ok);
       } catch (e) {
         // ignore - ensureRefreshed clears auth if refresh permanently fails
       } finally {
@@ -72,7 +74,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       if (state === 'active') {
         try {
           setIsRefreshing(true);
-          await ensureRefreshed();
+          console.debug('[auth] appstate active: ensuring refreshed');
+          const ok = await ensureRefreshed();
+          console.debug('[auth] appstate active: ensureRefreshed ->', ok);
           await refreshUser();
         } finally {
           setIsRefreshing(false);
