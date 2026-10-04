@@ -12,6 +12,7 @@ import {
 } from 'react-native';
 import { Stack, useRouter } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { getApiUrl, compileMod, saveModToLibrary, updateMod } from '@/lib/api';
 import { getEditContext, clearEditContext } from '../../../lib/cart';
 import { emitMods } from '@/lib/queue';
@@ -29,6 +30,11 @@ export default function CompileScreen() {
   const [saveMode, setSaveMode] = useState<'new' | 'update'>('new');
   const [summaryOpen, setSummaryOpen] = useState(false);
   const router = useRouter();
+  const insets = useSafeAreaInsets();
+  const bottomInset = Math.max(insets.bottom, 0);
+  const actionBarBottomPadding = 12;
+  const actionBarReservedHeight = 96;
+  const sheetBottomPadding = 22 + bottomInset;
 
   const maxSlots = 31;
   const totalDesigns = items.length;
@@ -87,7 +93,7 @@ export default function CompileScreen() {
       const res = await compileMod(ids);
       // Store result and show modal to ask for name
       setCompiled(res);
-      const suggested = (res.filename || `Temp.MOD`).replace(/\.MOD$/i, '');
+      const suggested = (res.filename || `zq.MOD`).replace(/\.MOD$/i, '');
       // If edit context exists, prefill with existing mod name and mark editing
       const edit = await getEditContext();
       setEditCtx(edit || null);
@@ -284,15 +290,18 @@ export default function CompileScreen() {
           </View>
         }
         contentContainerStyle={styles.listContent}
+        ListFooterComponent={<View style={{ height: actionBarReservedHeight }} />}
       />
 
-      <View style={styles.bottomActionBar}>
-        <TouchableOpacity style={styles.bottomSummaryButton} onPress={handleOpenSummary}>
-          <Text style={styles.bottomSummaryTitle}>{totalDesigns}/{maxSlots} slots</Text>
-          <Text style={styles.bottomSummaryMeta}>{availableSlots} free</Text>
+      <View style={[styles.bottomActionBar, { paddingBottom: actionBarBottomPadding }]}>
+        <TouchableOpacity style={styles.bottomSecondaryButton} onPress={handleOpenSummary}>
+          <Ionicons name="grid-outline" size={18} color="#4338ca" />
+          <View>
+            <Text style={styles.bottomSecondaryButtonText}>{totalDesigns}/{maxSlots} slots</Text>
+          </View>
         </TouchableOpacity>
         <TouchableOpacity
-          style={[styles.bottomCompileButton, (isCompiling || items.length === 0) && styles.bottomCompileButtonDisabled]}
+          style={[styles.bottomPrimaryButton, (isCompiling || items.length === 0) && styles.bottomCompileButtonDisabled]}
           onPress={handleCompile}
           disabled={isCompiling || items.length === 0}
         >
@@ -301,7 +310,7 @@ export default function CompileScreen() {
           ) : (
             <>
               <Ionicons name="layers-outline" size={18} color="#fff" />
-              <Text style={styles.bottomCompileButtonText}>Compile</Text>
+              <Text style={styles.bottomPrimaryButtonText}>Compile</Text>
             </>
           )}
         </TouchableOpacity>
@@ -310,7 +319,7 @@ export default function CompileScreen() {
       <Modal visible={summaryOpen} transparent animationType="slide" onRequestClose={handleCloseSummary}>
         <View style={styles.sheetBackdrop}>
           <TouchableOpacity style={styles.sheetOverlayTap} activeOpacity={1} onPress={handleCloseSummary} />
-          <View style={styles.summarySheet}>
+          <View style={[styles.summarySheet, { paddingBottom: sheetBottomPadding }]}>
             <View style={styles.summaryHandle} />
             <Text style={styles.summaryTitle}>Compile Summary</Text>
             <Text style={styles.summarySubtitle}>Track module capacity before compiling. A MOD file supports up to 31 slots.</Text>
@@ -410,7 +419,7 @@ const styles = StyleSheet.create({
   headerGhostButtonText: { color: '#fff', fontWeight: '700', fontSize: 14 },
   summaryTrigger: { flexDirection: 'row', alignItems: 'center', gap: 6, borderWidth: 1, borderColor: '#c7d2fe', backgroundColor: '#eef2ff', paddingHorizontal: 12, paddingVertical: 8, borderRadius: 999 },
   summaryTriggerText: { color: '#3730a3', fontWeight: '700' },
-  listContent: { paddingBottom: 110 },
+  listContent: { paddingBottom: 0 },
   item: { backgroundColor: '#fff', padding: 16, marginHorizontal: 16, marginBottom: 12, borderRadius: 14, borderWidth: 1, borderColor: '#e5e7eb' },
   itemRow: { flexDirection: 'row', alignItems: 'center', gap: 12 },
   slotBadge: { width: 40, height: 40, borderRadius: 10, backgroundColor: '#ede9fe', alignItems: 'center', justifyContent: 'center' },
@@ -429,19 +438,18 @@ const styles = StyleSheet.create({
     bottom: 0,
     paddingHorizontal: 16,
     paddingTop: 12,
-    paddingBottom: 18,
+    paddingBottom: 0,
     flexDirection: 'row',
     gap: 12,
     backgroundColor: 'rgba(255,255,255,0.98)',
     borderTopWidth: 1,
     borderTopColor: '#e5e7eb',
   },
-  bottomSummaryButton: { flex: 1, borderRadius: 14, borderWidth: 1, borderColor: '#d1d5db', backgroundColor: '#fff', paddingHorizontal: 14, paddingVertical: 12, justifyContent: 'center' },
-  bottomSummaryTitle: { fontSize: 15, fontWeight: '800', color: '#111827' },
-  bottomSummaryMeta: { marginTop: 2, fontSize: 12, color: '#6b7280' },
-  bottomCompileButton: { flex: 1.4, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8, borderRadius: 14, backgroundColor: '#7c3aed', paddingVertical: 14 },
+  bottomPrimaryButton: { flex: 1, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8, borderRadius: 14, backgroundColor: '#7c3aed', paddingVertical: 14 },
+  bottomPrimaryButtonText: { color: '#fff', fontSize: 16, fontWeight: '800' },
+  bottomSecondaryButton: { flex: 1, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8, borderRadius: 14, borderWidth: 1, borderColor: '#c7d2fe', backgroundColor: '#eef2ff', paddingVertical: 14, paddingHorizontal: 12 },
+  bottomSecondaryButtonText: { color: '#3730a3', fontSize: 16, fontWeight: '800' },
   bottomCompileButtonDisabled: { opacity: 0.45 },
-  bottomCompileButtonText: { color: '#fff', fontSize: 16, fontWeight: '800' },
   sheetBackdrop: { flex: 1, backgroundColor: 'rgba(0,0,0,0.35)', justifyContent: 'flex-end' },
   sheetOverlayTap: { flex: 1 },
   summarySheet: { backgroundColor: '#fff', borderTopLeftRadius: 22, borderTopRightRadius: 22, paddingHorizontal: 18, paddingTop: 12, paddingBottom: 22 },

@@ -10,6 +10,7 @@ import {
   Modal,
   TouchableOpacity
 } from 'react-native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useLocalSearchParams, Stack, useRouter } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import { fetchModFileDetail, base64ToUint8Array, getApiUrl } from '@/lib/api';
@@ -28,6 +29,11 @@ export default function ModDetailScreen() {
   const [error, setError] = useState<string | null>(null);
   const [isPreparingManageFlow, setIsPreparingManageFlow] = useState(false);
   const [sendSheetOpen, setSendSheetOpen] = useState(false);
+  const insets = useSafeAreaInsets();
+  const bottomInset = Math.max(insets.bottom, 0);
+  const actionBarBottomPadding = 12 + bottomInset;
+  const actionBarReservedHeight = 98 + bottomInset;
+  const sheetBottomPadding = 16 + bottomInset;
 
   useEffect(() => {
     let mounted = true;
@@ -152,13 +158,13 @@ export default function ModDetailScreen() {
           )}
         </View>
 
-        <View style={styles.bottomPadding} />
+        <View style={[styles.bottomPadding, { height: actionBarReservedHeight }]} />
       </ScrollView>
 
       <Modal visible={sendSheetOpen} transparent animationType="slide" onRequestClose={() => setSendSheetOpen(false)}>
         <View style={styles.sheetBackdrop}>
           <TouchableOpacity style={styles.sheetOverlayTap} activeOpacity={1} onPress={() => setSendSheetOpen(false)} />
-          <View style={styles.bottomSheet}>
+          <View style={[styles.bottomSheet, { paddingBottom: sheetBottomPadding }]}>
             <View style={styles.sheetHandle} />
             <Text style={styles.sheetTitle}>Send to Machine</Text>
             <Text style={styles.sheetSubtitle}>Connect your device only when you are ready to send this MOD file.</Text>
@@ -190,7 +196,7 @@ export default function ModDetailScreen() {
         </View>
       </Modal>
 
-      <View style={styles.bottomActionBar}>
+      <View style={[styles.bottomActionBar, { paddingBottom: actionBarBottomPadding }]}>
         <TouchableOpacity
           style={[styles.bottomPrimaryButton, isPreparingManageFlow && styles.bottomPrimaryButtonDisabled]}
           onPress={handleManageDesigns}
@@ -413,7 +419,7 @@ const styles = StyleSheet.create({
     gap: 8,
     paddingVertical: 14,
     borderRadius: 14,
-    backgroundColor: '#2563eb',
+    backgroundColor: '#7c3aed',
   },
   bottomPrimaryButtonDisabled: {
     opacity: 0.65,

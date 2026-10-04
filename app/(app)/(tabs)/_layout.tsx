@@ -3,6 +3,7 @@ import { Ionicons } from '@expo/vector-icons';
 import { useEffect, useRef, useState } from 'react';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { Modal, PanResponder, StyleSheet, Text, TouchableOpacity, View, Alert, Animated } from 'react-native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { getAuthHeader } from '@/lib/auth';
 import { getApiUrl } from '@/lib/api';
 import { subscribe, computeCount, hasQueueState, getQueueState, setQueueState, getQueueVersion } from '@/lib/queue';
@@ -12,6 +13,8 @@ export default function TabsLayout() {
   const [badgeCount, setBadgeCount] = useState(0);
   const router = useRouter();
   const { sessionExpired, acknowledgeSessionExpired } = useAuth();
+  const insets = useSafeAreaInsets();
+  const tabBarBottomInset = Math.max(insets.bottom, 0);
 
   const panResponder = useRef(
     PanResponder.create({
@@ -123,8 +126,8 @@ export default function TabsLayout() {
             backgroundColor: '#fff',
             borderTopWidth: 1,
             borderTopColor: '#e5e7eb',
-            paddingBottom: 4,
-            height: 60,
+            paddingBottom: 4 + tabBarBottomInset,
+            height: 60 + tabBarBottomInset,
           },
           tabBarLabelStyle: {
             fontSize: 12,

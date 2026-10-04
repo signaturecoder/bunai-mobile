@@ -49,7 +49,8 @@ export default function DesignsScreen() {
   const navigation: any = useNavigation();
   const [isCreating, setIsCreating] = useState(false);
   const [isNameModalVisible, setIsNameModalVisible] = useState(false);
-  const [newFilename, setNewFilename] = useState('UNTITLED.DB0');
+  const [newFilename, setNewFilename] = useState('AT');
+  const [filenameError, setFilenameError] = useState<string | null>(null);
 
   useLayoutEffect(() => {
     const iconColor = '#ffffff';
@@ -163,8 +164,9 @@ export default function DesignsScreen() {
   };
 
   const openCreateModal = () => {
-    const defaultName = `TEMP.DB0`;
+    const defaultName = 'AT';
     setNewFilename(defaultName);
+    setFilenameError(null);
     setIsNameModalVisible(true);
   };
 
@@ -177,7 +179,7 @@ export default function DesignsScreen() {
         return;
       }
 
-      const nameToUse = filename || newFilename || `TEMP.DB0`;
+      const nameToUse = filename || `${newFilename || 'AT'}.DB0`;
 
       // Default entry: 1 pick, box 1. The app's totalPicks uses doubled picks elsewhere,
       // generateDB0File expects totalPicks (already doubled in other flows), so use 2 here.
@@ -341,20 +343,22 @@ export default function DesignsScreen() {
               <TextInput
                 value={newFilename}
                 onChangeText={(txt) => {
-                  // enforce uppercase, remove illegal chars, limit base name to 8 chars
-                  const cleaned = txt.replace(/[^A-Za-z0-9_.-]/g, '').toUpperCase();
-                  const lastDot = cleaned.lastIndexOf('.');
-                  let base = lastDot >= 0 ? cleaned.slice(0, lastDot) : cleaned;
-                  let ext = lastDot >= 0 ? cleaned.slice(lastDot) : '';
-                  base = base.slice(0, 8);
-                  // keep any extension the user typed but we'll normalize on save
-                  setNewFilename(base + ext);
+                  const cleaned = txt.replace(/[^A-Za-z0-9_-]/g, '').toUpperCase();
+                  if (cleaned.length > 8) {
+                    setFilenameError('Name can be at most 8 characters.');
+                  } else {
+                    setFilenameError(null);
+                  }
+                  setNewFilename(cleaned.slice(0, 8));
                 }}
                 style={styles.modalInput}
                 autoCapitalize="characters"
                 autoCorrect={false}
-                placeholder="NAME.DB0"
+                maxLength={8}
+                placeholder="NAME"
               />
+              <Text style={styles.modalHint}>Extension `.DB0` will be added automatically. Use up to 8 characters.</Text>
+              {filenameError ? <Text style={styles.modalError}>{filenameError}</Text> : null}
               <View style={styles.modalActions}>
                 <TouchableOpacity style={[styles.modalButton, styles.modalCancel]} onPress={() => setIsNameModalVisible(false)}>
                   <Text style={styles.modalCancelText}>Cancel</Text>
@@ -362,19 +366,19 @@ export default function DesignsScreen() {
                 <TouchableOpacity
                   style={[styles.modalButton, styles.modalPrimary]}
                   onPress={() => {
-                      // Normalize name: strip any extension, limit base to 8 chars, append .DB0
-                      let raw = (newFilename || '').toUpperCase();
-                      // remove any extension
-                      raw = raw.replace(/\..*$/, '');
-                      const base = raw.slice(0, 8);
-                      const name = `${base}.DB0`;
+                      const base = (newFilename || '').trim().toUpperCase();
                       if (!base || base.length === 0) {
                         Alert.alert('Invalid filename', 'Please enter a filename (1-8 alphanumeric characters)');
                         return;
                       }
+                      if (base.length > 8) {
+                        setFilenameError('Name can be at most 8 characters.');
+                        return;
+                      }
+                      const name = `${base}.DB0`;
                       handleCreateNewDesign(name);
                   }}
-                  disabled={isCreating}
+                  disabled={isCreating || newFilename.trim().length === 0}
                 >
                   {isCreating ? <ActivityIndicator color="#fff" /> : <Text style={styles.modalPrimaryText}>Save</Text>}
                 </TouchableOpacity>
@@ -444,6 +448,8 @@ const styles = StyleSheet.create({
   modalTitle: { fontSize: 18, fontWeight: '700', color: '#111827', marginBottom: 8 },
   modalLabel: { fontSize: 12, color: '#6b7280', marginBottom: 6 },
   modalInput: { borderWidth: 1, borderColor: '#e5e7eb', borderRadius: 8, paddingHorizontal: 12, paddingVertical: 10, fontSize: 16, color: '#111827', backgroundColor: '#fff' },
+  modalHint: { marginTop: 8, fontSize: 12, color: '#6b7280' },
+  modalError: { marginTop: 8, fontSize: 12, color: '#dc2626', fontWeight: '600' },
   modalActions: { flexDirection: 'row', justifyContent: 'flex-end', gap: 8, marginTop: 12 },
   modalButton: { paddingHorizontal: 14, paddingVertical: 10, borderRadius: 8, minWidth: 84, alignItems: 'center', justifyContent: 'center' },
   modalCancel: { backgroundColor: '#f3f4f6' },

@@ -335,6 +335,10 @@ export default function DesignDetail() {
   const [saveChoiceError, setSaveChoiceError] = useState<string | null>(null);
   const listRef = useRef<FlatList<Entry> | null>(null);
   const insets = useSafeAreaInsets();
+  const bottomInset = Math.max(insets.bottom, 0);
+  const actionBarBottomPadding = 12 + bottomInset;
+  const actionBarReservedHeight = 96 + bottomInset;
+  const sheetBottomPadding = 16 + bottomInset;
 
   const handleFocusField = useCallback((index: number) => {
     // try to center the item in view; fallback to offset calculation
@@ -848,7 +852,7 @@ export default function DesignDetail() {
             index,
           })}
           keyboardShouldPersistTaps="handled"
-          ListFooterComponent={<View style={{ height: 140 + insets.bottom }} />}
+          ListFooterComponent={<View style={{ height: actionBarReservedHeight }} />}
         />
       </KeyboardAvoidingView>
 
@@ -864,7 +868,7 @@ export default function DesignDetail() {
             activeOpacity={1}
             onPress={() => setPreviewOpen(false)}
           />
-          <View style={[styles.bottomSheet, { height: "80%" }]}>
+          <View style={[styles.bottomSheet, { height: "80%", paddingBottom: sheetBottomPadding }]}>
             <Text style={styles.sheetTitle}>Pattern Preview</Text>
             <Text style={styles.sheetSubtitle}>
               {design.filename} • {totalPicks} picks
@@ -1041,7 +1045,7 @@ export default function DesignDetail() {
         </View>
       </Modal>
 
-      <View style={[styles.bottomActionBar, { paddingBottom: Math.max(12, insets.bottom) }]}>
+      <View style={[styles.bottomActionBar, { paddingBottom: actionBarBottomPadding }]}>
         {editMode ? (
           <TouchableOpacity
             style={[
@@ -1161,7 +1165,6 @@ const styles = StyleSheet.create({
   dirtyBadgeText: { color: "#92400e", fontWeight: "700", fontSize: 11 },
   previewBox: {
     flex: 1,
-    minHeight: 480,
     borderWidth: 1,
     borderColor: "#111827",
     borderRadius: 6,
@@ -1203,7 +1206,7 @@ const styles = StyleSheet.create({
     borderColor: "#cbd5e1",
   },
   previewRows: { flex: 1, backgroundColor: "#fff" },
-  previewRowsContent: { paddingVertical: 8, minHeight: 420 },
+  previewRowsContent: { paddingVertical: 8, flexGrow: 1 },
   previewBandLine: { flexDirection: "row", alignItems: "stretch" },
   previewBandLabelWrap: {
     width: 44,
@@ -1351,9 +1354,9 @@ const styles = StyleSheet.create({
     alignItems: "center",
     paddingVertical: 12,
     borderRadius: 10,
-    backgroundColor: "#f3f4f6",
+    backgroundColor: "#7c3aed",
   },
-  sheetCloseText: { fontWeight: "600", color: "#374151" },
+  sheetCloseText: { fontWeight: "600", color: "#fff" },
   modalBackdrop: {
     flex: 1,
     justifyContent: "center",
@@ -1491,7 +1494,7 @@ const styles = StyleSheet.create({
     gap: 8,
     paddingVertical: 14,
     borderRadius: 14,
-    backgroundColor: "#2563eb",
+    backgroundColor: "#7c3aed",
   },
   bottomSaveButton: { backgroundColor: "#2563eb" },
   bottomDoneButton: { backgroundColor: "#111827" },
