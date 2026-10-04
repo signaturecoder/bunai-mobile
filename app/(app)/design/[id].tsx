@@ -89,6 +89,7 @@ const RowItem = memo(
     const selectedBox = normalizeBoxNumber(entry.box ?? 1);
     const selectedThread = getThreadNumber(selectedBox);
     const selectedRepeatLevel = getRepeatLevel(selectedBox);
+    const isLoopRow = selectedRepeatLevel > 0;
     const picksLabel = `${entry.picks || 0} picks`;
     const boxLabel = `Box ${entry.box || 0}`;
 
@@ -99,7 +100,13 @@ const RowItem = memo(
     };
 
     return (
-      <View style={styles.rowCard}>
+      <View
+        style={[
+          styles.rowCard,
+          selectedRepeatLevel === 1 && styles.rowCardLoopLevelOne,
+          selectedRepeatLevel === 2 && styles.rowCardLoopLevelTwo,
+        ]}
+      >
         <TouchableOpacity
           style={styles.rowCardHeader}
           onPress={() => {
@@ -109,7 +116,30 @@ const RowItem = memo(
           activeOpacity={editMode ? 0.7 : 1}
         >
           <View style={styles.rowHeaderMain}>
-            <Text style={styles.rowIndex}>Row {idx + 1}</Text>
+            <View style={styles.rowTitleRow}>
+              <Text style={styles.rowIndex}>Row {idx + 1}</Text>
+              {isLoopRow ? (
+                <View
+                  style={[
+                    styles.loopBadge,
+                    selectedRepeatLevel === 1
+                      ? styles.loopBadgeLevelOne
+                      : styles.loopBadgeLevelTwo,
+                  ]}
+                >
+                  <Text
+                    style={[
+                      styles.loopBadgeText,
+                      selectedRepeatLevel === 1
+                        ? styles.loopBadgeTextLevelOne
+                        : styles.loopBadgeTextLevelTwo,
+                    ]}
+                  >
+                    {selectedRepeatLevel === 1 ? "1st Loop" : "2nd Loop"}
+                  </Text>
+                </View>
+              ) : null}
+            </View>
             <Text style={styles.rowMetaLine}>
               {picksLabel} • {boxLabel}
             </Text>
@@ -341,16 +371,28 @@ export default function DesignDetail() {
   const sheetBottomPadding = 16 + bottomInset;
 
   const handleFocusField = useCallback((index: number) => {
-    // try to center the item in view; fallback to offset calculation
-    try {
-      listRef.current?.scrollToIndex({ index, viewPosition: 0.5 });
-    } catch (e) {
+    const scrollToFocusedRow = () => {
       try {
-        listRef.current?.scrollToOffset({ offset: Math.max(0, index * 72 - 120) });
-      } catch (err) {
-        // ignore
+        listRef.current?.scrollToIndex({
+          index,
+          viewPosition: 0.2,
+          viewOffset: 140,
+          animated: true,
+        });
+      } catch (e) {
+        try {
+          listRef.current?.scrollToOffset({
+            offset: Math.max(0, index * 140 - 180),
+            animated: true,
+          });
+        } catch (err) {
+          // ignore
+        }
       }
-    }
+    };
+
+    scrollToFocusedRow();
+    setTimeout(scrollToFocusedRow, 180);
   }, []);
   const [initialSignature, setInitialSignature] = useState("");
 
@@ -830,8 +872,8 @@ export default function DesignDetail() {
       </View>
 
       <KeyboardAvoidingView
-        behavior={Platform.OS === 'ios' ? 'padding' : undefined}
-        keyboardVerticalOffset={100}
+        behavior={Platform.select({ ios: 'padding', android: 'height' })}
+        keyboardVerticalOffset={Platform.OS === 'ios' ? 100 : 24}
         style={{ flex: 1 }}
       >
         <FlatList
@@ -846,12 +888,13 @@ export default function DesignDetail() {
           updateCellsBatchingPeriod={50}
           windowSize={9}
           removeClippedSubviews
-          getItemLayout={(_, index) => ({
-            length: 68,
-            offset: 68 * index,
-            index,
-          })}
           keyboardShouldPersistTaps="handled"
+          onScrollToIndexFailed={(info) => {
+            listRef.current?.scrollToOffset({
+              offset: Math.max(0, info.averageItemLength * info.index - 180),
+              animated: true,
+            });
+          }}
           ListFooterComponent={<View style={{ height: actionBarReservedHeight }} />}
         />
       </KeyboardAvoidingView>
@@ -1230,10 +1273,36 @@ const styles = StyleSheet.create({
     marginBottom: 10,
     backgroundColor: "#fff",
   },
+  rowCardLoopLevelOne: {
+    borderColor: "#c7d2fe",
+    backgroundColor: "#f8faff",
+  },
+  rowCardLoopLevelTwo: {
+    borderColor: "#fde68a",
+    backgroundColor: "#fffbeb",
+  },
   rowCardHeader: { flexDirection: "row", alignItems: "center", gap: 12 },
   rowHeaderMain: { flex: 1 },
+  rowTitleRow: { flexDirection: "row", alignItems: "center", gap: 8 },
   rowHeaderRight: { alignItems: "flex-end", gap: 6, minWidth: 88 },
   rowIndex: { fontWeight: "700", color: "#111827" },
+  loopBadge: {
+    paddingHorizontal: 8,
+    paddingVertical: 3,
+    borderRadius: 999,
+    borderWidth: 1,
+  },
+  loopBadgeLevelOne: {
+    backgroundColor: "#eef2ff",
+    borderColor: "#c7d2fe",
+  },
+  loopBadgeLevelTwo: {
+    backgroundColor: "#fef3c7",
+    borderColor: "#fcd34d",
+  },
+  loopBadgeText: { fontSize: 11, fontWeight: "700" },
+  loopBadgeTextLevelOne: { color: "#3730a3" },
+  loopBadgeTextLevelTwo: { color: "#92400e" },
   rowMetaLine: { marginTop: 4, fontSize: 13, color: "#4b5563" },
   rowSubtotalLabel: {
     fontSize: 11,
