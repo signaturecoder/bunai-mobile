@@ -1,7 +1,7 @@
 {
   "expo": {
     "name": "Bunai App",
-    "slug": "bunai-mobile",
+    "slug": "bunai-app",
     "version": "1.1.0",
     "orientation": "portrait",
     "icon": "./assets/icon.png",
@@ -31,14 +31,16 @@
       "expo-router",
       "expo-secure-store"
     ],
+    "description": "Bunai mobile application to view and manage designs",
     "experiments": {
       "typedRoutes": true
     },
     "extra": {
       "router": {},
       "eas": {
-        "projectId": "b96d4b54-3785-4d19-a1e1-db29ddbed486"
+        "projectId": "4c27f91e-b3b6-4711-a1ee-0df735b4f8c3"
       }
-    }
+    },
+    "owner": "bunai-app"
   }
 }
