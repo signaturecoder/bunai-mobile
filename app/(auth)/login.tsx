@@ -9,6 +9,7 @@ import {
   Platform,
   ActivityIndicator,
   Alert,
+  Image,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { useRouter } from 'expo-router';
@@ -52,9 +53,8 @@ export default function LoginScreen() {
       <View style={styles.content}>
         {/* Logo / Title */}
         <View style={styles.header}>
-          <Text style={styles.logo}>🧶</Text>
-          <Text style={styles.title}>Bunai</Text>
-          <Text style={styles.subtitle}>Power Loom Controller</Text>
+          <Image source={require('../../assets/bunai-logo.png')} style={styles.logo} />
+          <Text style={styles.subtitle}>Power Loom Design</Text>
         </View>
 
         {/* Login Form */}
@@ -135,11 +135,12 @@ const styles = StyleSheet.create({
   },
   header: {
     alignItems: 'center',
-    marginBottom: 48,
+    marginBottom: 16,
   },
   logo: {
-    fontSize: 64,
-    marginBottom: 8,
+    width: 256,
+    height: 128,
+    marginBottom: 2,
   },
   title: {
     fontSize: 32,
@@ -149,7 +150,6 @@ const styles = StyleSheet.create({
   subtitle: {
     fontSize: 16,
     color: '#6b7280',
-    marginTop: 4,
   },
   form: {
     backgroundColor: '#fff',

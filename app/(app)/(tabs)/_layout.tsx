@@ -189,9 +189,9 @@ export default function TabsLayout() {
             <TouchableOpacity style={styles.menuItem} onPress={() => { closeDrawer(); router.push('/(app)/settings'); }}>
               <Text style={styles.menuItemText}>Settings</Text>
             </TouchableOpacity>
-            <TouchableOpacity style={styles.menuItem} onPress={() => { closeDrawer(); router.push('/(app)/diagnostics'); }}>
+            {/* <TouchableOpacity style={styles.menuItem} onPress={() => { closeDrawer(); router.push('/(app)/diagnostics'); }}>
               <Text style={styles.menuItemText}>Diagnostics</Text>
-            </TouchableOpacity>
+            </TouchableOpacity> */}
             <TouchableOpacity style={[styles.menuItem, { marginTop: 12 }]} onPress={() => closeDrawer()}>
               <Text style={[styles.menuItemText, { color: '#6b7280' }]}>Close</Text>
             </TouchableOpacity>

@@ -19,3 +19,4 @@
     "production": {}
   }
 }
+// eas build --platform android --profile development

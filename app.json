@@ -2,14 +2,14 @@
   "expo": {
     "name": "Bunai App",
     "slug": "bunai-app",
-    "version": "1.1.0",
+    "version": "1.1.1",
     "orientation": "portrait",
-    "icon": "./assets/icon.png",
+    "icon": "./assets/bunai-logo.png",
     "scheme": "bunai",
     "userInterfaceStyle": "automatic",
     "newArchEnabled": true,
     "splash": {
-      "image": "./assets/splash.png",
+      "image": "./assets/bunai-logo.png",
       "resizeMode": "contain",
       "backgroundColor": "#7c3aed"
     },

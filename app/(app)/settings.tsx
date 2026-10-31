@@ -3,10 +3,14 @@ import { useRouter } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import { useAuth } from '@/contexts/AuthContext';
 import { getApiUrl } from '@/lib/api';
+import Constants from 'expo-constants';
 
 export default function SettingsScreen() {
   const { user, logout } = useAuth();
   const router = useRouter();
+
+   // Access the version field directly from expoConfig
+  const appVersion = Constants.expoConfig?.version ?? '1.0.0';
 
   const handleLogout = () => {
     Alert.alert(
@@ -50,7 +54,7 @@ export default function SettingsScreen() {
         
         <View style={styles.infoItem}>
           <Text style={styles.infoLabel}>Version</Text>
-          <Text style={styles.infoValue}>1.0.0</Text>
+          <Text style={styles.infoValue}>{appVersion}</Text>
         </View>
         
         <View style={styles.infoItem}>
@@ -76,8 +80,7 @@ export default function SettingsScreen() {
 
       {/* Footer */}
       <View style={styles.footer}>
-        <Text style={styles.footerText}>Bunai Mobile</Text>
-        <Text style={styles.footerSubtext}>Power Loom Controller</Text>
+        <Text style={styles.footerText}>Bunai App</Text>
       </View>
     </View>
   );
@@ -174,7 +177,7 @@ const styles = StyleSheet.create({
     flex: 1,
     justifyContent: 'flex-end',
     alignItems: 'center',
-    paddingBottom: 32,
+    paddingBottom: 64,
   },
   footerText: {
     fontSize: 16,
