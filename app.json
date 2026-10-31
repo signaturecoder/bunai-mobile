@@ -7,12 +7,6 @@
     "icon": "./assets/bunai-logo.png",
     "scheme": "bunai",
     "userInterfaceStyle": "automatic",
-    "newArchEnabled": true,
-    "splash": {
-      "image": "./assets/bunai-logo.png",
-      "resizeMode": "contain",
-      "backgroundColor": "#7c3aed"
-    },
     "ios": {
       "supportsTablet": true,
       "bundleIdentifier": "com.bunai.mobile"
@@ -29,7 +23,17 @@
     },
     "plugins": [
       "expo-router",
-      "expo-secure-store"
+      "expo-secure-store",
+      [
+        "expo-splash-screen",
+        {
+          "image": "./assets/bunai-logo.png",
+          "imageWidth": 200,
+          "resizeMode": "contain",
+          "backgroundColor": "#7c3aed"
+        }
+      ],
+      "expo-font"
     ],
     "description": "Bunai mobile application to view and manage designs",
     "experiments": {
